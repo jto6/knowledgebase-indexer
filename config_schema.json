@@ -1,0 +1,177 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["directories", "output"],
+  "properties": {
+    "directories": {
+      "type": "object",
+      "required": ["include"],
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "keywords": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["file"],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["freeplane"],
+          "default": "freeplane"
+        }
+      }
+    },
+    "file_types": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+          "type": "object",
+          "required": ["extensions", "handler"],
+          "properties": {
+            "extensions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^\\."
+              },
+              "minItems": 1
+            },
+            "handler": {
+              "type": "string"
+            },
+            "hierarchy_config": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["xml_nodes", "heading_levels", "indented_lists", "nested_lists", "composite"]
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "xml_nodes"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "parent_element": {
+                        "type": "string"
+                      },
+                      "child_selector": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["parent_element", "child_selector"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "composite"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "structures": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["heading_levels", "nested_lists", "indented_lists"]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": ["structures"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "indented_lists"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "indent_char": {
+                        "type": "string",
+                        "maxLength": 1
+                      },
+                      "indent_size": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "search_config": {
+              "type": "object",
+              "properties": {
+                "content_fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "link_config": {
+              "type": "object",
+              "properties": {
+                "format": {
+                  "type": "string"
+                },
+                "supports_fragments": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
