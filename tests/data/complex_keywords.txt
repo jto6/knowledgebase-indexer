@@ -1,0 +1,206 @@
+# Complex keyword structure for comprehensive testing
+# This file contains various hierarchical patterns and search sequences
+
+Software Development
+	Programming Languages
+		Python
+			function:definition:syntax
+			class:inheritance:multiple
+			async:function:await
+			exception:handling:try:catch
+		JavaScript
+			function:arrow:syntax
+			class:constructor:method
+			promise:async:await
+			object:destructuring:assignment
+		TypeScript
+			interface:definition:extends
+			type:alias:union
+			generic:constraint:extends
+			decorator:metadata:reflection
+	
+	Frameworks and Libraries
+		Frontend Frameworks
+			React
+				component:functional:hooks
+				component:class:lifecycle
+				state:management:redux
+				routing:react:router
+			Vue.js
+				component:single:file
+				directive:custom:binding
+				store:vuex:mutation
+		Backend Frameworks
+			FastAPI
+				route:decorator:path
+				dependency:injection:depends
+				response:model:pydantic
+			Express.js
+				middleware:request:response
+				route:handler:async
+				error:handling:middleware
+	
+	Architecture Patterns
+		Design Patterns
+			Creational
+				singleton:pattern:implementation
+				factory:pattern:abstract
+				builder:pattern:fluent
+			Structural
+				adapter:pattern:interface
+				decorator:pattern:wrapper
+				facade:pattern:simplification
+			Behavioral
+				observer:pattern:notification
+				strategy:pattern:algorithm
+				command:pattern:encapsulation
+		
+		System Architecture
+			Microservices
+				service:discovery:registry
+				api:gateway:routing
+				circuit:breaker:pattern
+			Event-Driven
+				event:sourcing:store
+				message:queue:async
+				pub:sub:pattern
+
+Database Technologies
+	Relational Databases
+		PostgreSQL
+			table:constraint:foreign:key
+			index:performance:optimization
+			transaction:isolation:level
+			query:optimization:explain
+		MySQL
+			storage:engine:innodb
+			replication:master:slave
+			partition:table:horizontal
+	
+	NoSQL Databases
+		MongoDB
+			document:collection:database
+			index:compound:performance
+			aggregation:pipeline:stage
+		Redis
+			data:structure:hash
+			cache:expire:ttl
+			pub:sub:messaging
+
+DevOps and Infrastructure
+	Containerization
+		Docker
+			dockerfile:image:build
+			container:volume:mount
+			network:bridge:host
+		Kubernetes
+			pod:container:group
+			service:load:balancer
+			deployment:rolling:update
+			ingress:controller:routing
+	
+	CI/CD Pipeline
+		Build Automation
+			pipeline:stage:job
+			test:automation:coverage
+			artifact:repository:deploy
+		Monitoring
+			log:aggregation:analysis
+			metric:collection:alerting
+			health:check:endpoint
+
+API Development
+	REST Architecture
+		HTTP Methods
+			GET:request:query:parameter
+			POST:request:body:json
+			PUT:request:idempotent:update
+			DELETE:request:resource:removal
+		Response Handling
+			status:code:success
+			error:response:format
+			pagination:cursor:based
+	
+	GraphQL
+		Schema Design
+			type:definition:field
+			query:resolver:function
+			mutation:input:validation
+		Performance
+			query:optimization:n:plus:one
+			dataloader:batch:request
+
+Testing Strategies
+	Unit Testing
+		Test Frameworks
+			pytest:fixture:parametrize
+			jest:mock:spy
+			unittest:assert:method
+		Test Patterns
+			arrange:act:assert
+			given:when:then
+			mock:stub:fake
+	
+	Integration Testing
+		API Testing
+			endpoint:request:response
+			database:transaction:rollback
+			service:integration:contract
+		
+	End-to-End Testing
+		UI Testing
+			selenium:webdriver:automation
+			cypress:command:assertion
+			page:object:model
+
+Security Practices
+	Authentication
+		Token-Based
+			jwt:token:signature
+			oauth:flow:authorization
+			session:management:cookie
+	
+	Authorization
+		Access Control
+			role:based:permission
+			attribute:based:control
+			principle:least:privilege
+	
+	Data Protection
+		Encryption
+			symmetric:key:algorithm
+			asymmetric:public:private
+			hash:function:salt
+
+Performance Optimization
+	Frontend Performance
+		Loading Optimization
+			code:splitting:lazy
+			bundle:size:optimization
+			image:optimization:compression
+		Runtime Performance
+			virtual:dom:reconciliation
+			memo:optimization:render
+	
+	Backend Performance
+		Database Optimization
+			query:index:optimization
+			connection:pool:management
+			cache:strategy:implementation
+		Scaling
+			horizontal:scaling:load:balancer
+			vertical:scaling:resource
+			auto:scaling:metric:based
+
+Documentation
+	Code Documentation
+		API Documentation
+			openapi:swagger:specification
+			endpoint:documentation:example
+			schema:validation:definition
+	
+	Technical Writing
+		User Guides
+			tutorial:step:by:step
+			troubleshooting:guide:solution
+			best:practices:recommendation
