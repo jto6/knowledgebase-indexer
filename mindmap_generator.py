@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
 from collections import defaultdict
 import os
+import re
 
 from core_handlers import generate_unique_id, get_current_timestamp, HierarchicalNode
 from search import SearchResult
@@ -29,6 +30,42 @@ class FreeplaneMapGenerator:
             if node_id not in self.used_ids:
                 self.used_ids.add(node_id)
                 return node_id
+    
+    def _generate_markdown_anchor(self, heading_text: str) -> str:
+        """Generate GitHub-style anchor from heading text."""
+        if not heading_text:
+            return ""
+        
+        # Convert to lowercase and replace spaces/special chars with dashes
+        # GitHub style: "ARM Interrupt Handling" -> "arm-interrupt-handling"
+        anchor = heading_text.lower()
+        
+        # Replace spaces and common punctuation with dashes
+        anchor = re.sub(r'[^\w\-_]', '-', anchor)
+        
+        # Remove multiple consecutive dashes
+        anchor = re.sub(r'-+', '-', anchor)
+        
+        # Remove leading/trailing dashes
+        anchor = anchor.strip('-')
+        
+        return anchor
+    
+    def _find_markdown_anchor_for_node(self, node: HierarchicalNode) -> str:
+        """Find the appropriate GitHub-style anchor for a markdown node."""
+        # If this is a heading node, use its text
+        if hasattr(node, 'node_type') and node.node_type == 'heading':
+            return self._generate_markdown_anchor(node.text or '')
+        
+        # For non-heading nodes, traverse up the hierarchy to find the nearest heading ancestor
+        current = node
+        while current and hasattr(current, 'parent') and current.parent:
+            current = current.parent
+            if hasattr(current, 'node_type') and current.node_type == 'heading':
+                return self._generate_markdown_anchor(current.text or '')
+        
+        # If no heading ancestor found, return empty string (just file link)
+        return ""
     
     def create_mind_map(self, file_system_index: Dict[str, List[HierarchicalNode]],
                        keyword_entries: List[Any],
@@ -164,7 +201,16 @@ class FreeplaneMapGenerator:
     def _create_directory_nodes(self, parent: ET.Element, structure: Dict[str, Any],
                               file_index: Dict[str, List[HierarchicalNode]]):
         """Recursively create directory and file nodes."""
-        # Create directory nodes first (sorted)
+        # First, handle files at the root level (if any)
+        if '_files' in structure:
+            for file_path in sorted(structure['_files']):
+                # Skip the output file itself
+                if Path(file_path).resolve() == self.output_path.resolve():
+                    continue
+                
+                self._create_file_node(parent, file_path)
+        
+        # Create directory nodes (sorted)
         for dir_name in sorted(structure.keys()):
             if dir_name.startswith('_'):
                 continue
@@ -193,10 +239,9 @@ class FreeplaneMapGenerator:
                     if Path(file_path).resolve() == self.output_path.resolve():
                         continue
                     
-                    self._create_file_node(dir_node, file_path, file_index.get(file_path, []))
+                    self._create_file_node(dir_node, file_path)
     
-    def _create_file_node(self, parent: ET.Element, file_path: str, 
-                         nodes: List[HierarchicalNode]):
+    def _create_file_node(self, parent: ET.Element, file_path: str):
         """Create node for a single file."""
         file_name = Path(file_path).name
         
@@ -216,9 +261,7 @@ class FreeplaneMapGenerator:
             'LINK': link_path
         })
         
-        # Add hierarchical content from file
-        for node in nodes:
-            self._create_hierarchical_node(file_node, node, link_path)
+        # R-FS-002: File System Index only requires hyperlink to file, not file contents
     
     def _create_hierarchical_node(self, parent: ET.Element, node: HierarchicalNode, 
                                 base_file_path: str):
@@ -226,7 +269,15 @@ class FreeplaneMapGenerator:
         # Determine link
         link = base_file_path
         if hasattr(node, 'id') and node.id:
-            link += f"#{node.id}"
+            # Handle markdown files specially
+            if base_file_path.endswith(('.md', '.markdown')):
+                # For markdown files, find the nearest heading ancestor to generate anchor
+                anchor = self._find_markdown_anchor_for_node(node)
+                if anchor:
+                    link += f"#{anchor}"
+            else:
+                # For other file types (like Freeplane), use the node ID
+                link += f"#{node.id}"
         
         xml_node = ET.SubElement(parent, 'node', {
             'ID': self._generate_unique_id(),
@@ -310,7 +361,15 @@ class FreeplaneMapGenerator:
                 
                 link = link_path
                 if hasattr(result.node, 'id') and result.node.id:
-                    link += f"#{result.node.id}"
+                    # Handle markdown files specially
+                    if link_path.endswith(('.md', '.markdown')):
+                        # For markdown files, find the nearest heading ancestor to generate anchor
+                        anchor = self._find_markdown_anchor_for_node(result.node)
+                        if anchor:
+                            link += f"#{anchor}"
+                    else:
+                        # For other file types (like Freeplane), use the node ID
+                        link += f"#{result.node.id}"
                 
                 ET.SubElement(file_node, 'node', {
                     'ID': self._generate_unique_id(),
