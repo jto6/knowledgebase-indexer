@@ -60,17 +60,17 @@ class FreeplaneHandler(FileHandler):
     def get_node_content(self, node: HierarchicalNode) -> str:
         """Extract searchable content from a node."""
         content_parts = [node.text, node.content]
-        
+
         # Include rich content if available
         if 'richcontent' in node.metadata:
             content_parts.append(node.metadata['richcontent'])
-        
+
         # Include note content if available
         if 'note' in node.metadata:
             content_parts.append(node.metadata['note'])
-        
+
         return ' '.join(filter(None, content_parts))
-    
+
     def _xml_element_to_hierarchical_node(self, element: ET.Element, file_path: str, 
                                         parent: Optional[HierarchicalNode] = None) -> HierarchicalNode:
         """Convert XML element to HierarchicalNode."""
@@ -124,76 +124,76 @@ class FreeplaneHandler(FileHandler):
     def _extract_text_from_html(self, element: ET.Element) -> str:
         """Extract text content from HTML elements."""
         text_parts = []
-        
+
         # Get text content
         if element.text:
             text_parts.append(element.text.strip())
-        
+
         # Recursively process child elements
         for child in element:
             text_parts.append(self._extract_text_from_html(child))
             if child.tail:
                 text_parts.append(child.tail.strip())
-        
+
         return ' '.join(filter(None, text_parts))
-    
+
     def extract_tags(self, file_path: str) -> Dict[str, List[tuple]]:
         """Extract tags from Freeplane node TAGS attributes (R-TAG-001 to R-TAG-004)."""
         tag_map = {}
-        
+
         try:
             tree = ET.parse(file_path)
             root = tree.getroot()
-            
+
             # Find all nodes with TAGS attribute (R-TAG-001)
             for node_elem in root.findall('.//node[@TAGS]'):
                 tags_attr = node_elem.get('TAGS', '')
                 if tags_attr:
                     # Handle HTML entities and encoded characters (R-TAG-002)
                     decoded = html.unescape(tags_attr)
-                    
+
                     # Replace encoded newlines with spaces (R-TAG-003)
                     decoded = decoded.replace('&#xa;', ' ')
-                    
+
                     # Split on whitespace to extract individual tags (R-TAG-004)
                     individual_tags = decoded.split()
-                    
+
                     for tag in individual_tags:
                         tag = tag.strip()
                         if tag:
                             node_id = node_elem.get('ID', '')
                             node_text = node_elem.get('TEXT', '')
-                            
+
                             if tag not in tag_map:
                                 tag_map[tag] = []
                             tag_map[tag].append((file_path, node_id, node_text))
-            
+
         except Exception as e:
             print(f"Error extracting tags from {file_path}: {e}")
-        
+
         return tag_map
-    
+
     def generate_link(self, file_path: str, node_id: Optional[str] = None) -> str:
         """Generate link with optional node fragment."""
         rel_path = Path(file_path).relative_to(Path.cwd())
-        
+
         if node_id:
             return f"{rel_path}#{node_id}"
         else:
             return str(rel_path)
-    
+
     def search_in_node_subtree(self, node: HierarchicalNode, pattern: re.Pattern, 
                               include_descendants: bool = True) -> List[HierarchicalNode]:
         """Search within a node and optionally its descendants."""
         matches = []
-        
+
         # Search current node content
         node_content = self.get_node_content(node)
         if pattern.search(node_content):
             matches.append(node)
             if not include_descendants:
                 return matches  # Early termination for context preservation
-        
+
         # Search descendants if requested
         if include_descendants or not matches:
             for child in node.children:
@@ -202,5 +202,5 @@ class FreeplaneHandler(FileHandler):
                     matches.extend(child_matches)
                     if not include_descendants:
                         break  # Early termination to preserve hierarchical context
-        
+
         return matches
