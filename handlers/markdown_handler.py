@@ -74,80 +74,100 @@ class MarkdownHandler(FileHandler):
         elements = []
         lines = content.split('\n')
         
-        i = 0
-        while i < len(lines):
-            line = lines[i]
+        # First pass: identify all headings and list items with their positions
+        line_elements = []  # Track what each line is
+        
+        for i, line in enumerate(lines):
             stripped = line.strip()
             
             if not stripped:
-                i += 1
+                line_elements.append(None)  # Empty line
                 continue
             
-            # Parse headings
+            # Check for headings
             heading_match = re.match(r'^(#{1,6})\s+(.+)$', stripped)
             if heading_match:
                 level = len(heading_match.group(1))
-                text = heading_match.group(2)
+                heading_text = heading_match.group(2)
                 
-                # Collect content until next heading of same or higher level
-                section_content = [text]
-                j = i + 1
-                
-                while j < len(lines):
-                    next_line = lines[j].strip()
-                    if not next_line:
-                        j += 1
-                        continue
-                    
-                    next_heading_match = re.match(r'^(#{1,6})\s+', next_line)
-                    if next_heading_match:
-                        next_level = len(next_heading_match.group(1))
-                        if next_level <= level:
-                            break
-                    
-                    section_content.append(lines[j])
-                    j += 1
-                
-                elements.append(MarkdownElement(
-                    element_type='heading',
-                    level=level,
-                    content=' '.join(section_content),
-                    raw_text=text,
-                    line_number=i + 1
-                ))
-                
-                i = j
+                line_elements.append({
+                    'type': 'heading',
+                    'level': level,
+                    'text': heading_text,
+                    'line_num': i + 1
+                })
                 continue
             
-            # Parse list items
+            # Check for list items
             list_match = re.match(r'^(\s*)([-*+]|\d+\.)\s+(.+)$', line)
             if list_match:
                 indent = list_match.group(1)
-                marker = list_match.group(2)
                 text = list_match.group(3)
-                level = len(indent) // 2  # Assuming 2-space indentation
+                level = len(indent) // 2
                 
-                elements.append(MarkdownElement(
-                    element_type='list_item',
-                    level=level,
-                    content=text,
-                    raw_text=text,
-                    line_number=i + 1
-                ))
-                
-                i += 1
+                line_elements.append({
+                    'type': 'list_item',
+                    'level': level,
+                    'text': text,
+                    'line_num': i + 1
+                })
                 continue
             
-            # Regular paragraph or other content
-            elements.append(MarkdownElement(
-                element_type='paragraph',
-                level=0,
-                content=stripped,
-                raw_text=stripped,
-                line_number=i + 1
-            ))
+            # Regular content
+            line_elements.append({
+                'type': 'content',
+                'text': stripped,
+                'line_num': i + 1
+            })
+        
+        # Second pass: build all heading elements with proper content boundaries  
+        for i, element in enumerate(line_elements):
+            if not element or element['type'] != 'heading':
+                continue
             
-            i += 1
+            # This is a heading - collect its content (only content that's not in subheadings)
+            heading_level = element['level']
+            heading_text = element['text']
+            content_parts = [heading_text]
+            
+            # Look ahead for content that belongs directly to this heading (not subheadings)
+            j = i + 1
+            while j < len(line_elements):
+                next_element = line_elements[j]
+                
+                if not next_element:  # Skip empty lines
+                    j += 1
+                    continue
+                
+                if next_element['type'] == 'heading':
+                    # Stop if we hit ANY heading (subheadings will be processed separately)
+                    break
+                
+                # Add direct content (paragraphs, but not list items which become separate nodes)
+                if next_element['type'] == 'content':
+                    content_parts.append(next_element['text'])
+                
+                j += 1
+            
+            # Create heading element
+            elements.append(MarkdownElement(
+                element_type='heading',
+                level=heading_level,
+                content=' '.join(content_parts),
+                raw_text=heading_text,
+                line_number=element['line_num']
+            ))
+        
+        # Third pass: add all list items as separate elements
+        for element in line_elements:
+            if element and element['type'] == 'list_item':
+                elements.append(MarkdownElement(
+                    element_type='list_item',
+                    level=element['level'],
+                    content=element['text'],
+                    raw_text=element['text'],
+                    line_number=element['line_num']
+                ))
         
         return elements
     
@@ -156,12 +176,16 @@ class MarkdownHandler(FileHandler):
         """Build composite hierarchy from parsed elements."""
         root_nodes = []
         heading_stack = []  # Stack to track heading hierarchy
+        list_stack = []     # Stack to track list hierarchy within current heading
         
         for element in elements:
             if element.element_type == 'heading':
                 # Pop headings of same or higher level
                 while heading_stack and heading_stack[-1].metadata['heading_level'] >= element.level:
                     heading_stack.pop()
+                
+                # Clear list stack when entering new heading section
+                list_stack = []
                 
                 # Create heading node
                 heading_node = HierarchicalNode(
@@ -185,21 +209,20 @@ class MarkdownHandler(FileHandler):
                 heading_stack.append(heading_node)
             
             elif element.element_type == 'list_item':
-                # Find the appropriate parent (closest heading or list item)
+                # Determine parent node for this list item
                 parent_node = None
                 
-                if heading_stack:
+                # Pop list items that are at same or higher level (shallower indentation)
+                while list_stack and list_stack[-1].metadata.get('list_level', 0) >= element.level:
+                    list_stack.pop()
+                
+                # Find parent: either a list item or the current heading
+                if list_stack:
+                    # Parent is the last list item (deeper indentation)
+                    parent_node = list_stack[-1]
+                elif heading_stack:
+                    # Parent is the current heading section
                     parent_node = heading_stack[-1]
-                    
-                    # Look for existing list structure within this heading
-                    existing_lists = parent_node.find_children_by_type('list_item')
-                    
-                    if existing_lists:
-                        # Find appropriate parent based on indentation level
-                        for list_node in reversed(existing_lists):
-                            if list_node.metadata.get('list_level', 0) < element.level:
-                                parent_node = list_node
-                                break
                 
                 # Create list item node
                 list_node = HierarchicalNode(
@@ -214,32 +237,60 @@ class MarkdownHandler(FileHandler):
                     }
                 )
                 
+                # Add to appropriate parent
                 if parent_node:
                     parent_node.add_child(list_node)
                 else:
+                    # No parent heading, add to root
                     root_nodes.append(list_node)
+                
+                # Add to list stack for potential children
+                list_stack.append(list_node)
         
         return root_nodes
     
-    def extract_tags(self, file_path: str) -> List[str]:
-        """Extract tags from Markdown file."""
-        tags = set()
-        
+    def extract_tags(self, file_path: str) -> Dict[str, List[tuple]]:
+        """Extract tags from Markdown file (R-MARKDOWN-TAG-001 to R-MARKDOWN-TAG-007)."""
+        tag_map = {}
+
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
+
+            tags = set()
+
+            # Extract hashtag-style tags (R-MARKDOWN-TAG-001)
+            # Match hashtags that are standalone (after whitespace or start of line)
+            hashtag_pattern = r'(?:^|\s)#([\w-]+)(?=\s|[^\w-]|$)'
             
-            # Extract hashtag-style tags
-            hashtag_matches = re.findall(r'#(\w+)', content)
-            tags.update(hashtag_matches)
+            # Remove code blocks to avoid extracting hashtags from code
+            # Remove fenced code blocks (```...```)
+            content_no_code = re.sub(r'```.*?```', '', content, flags=re.DOTALL)
+            # Remove inline code (`...`)
+            content_no_code = re.sub(r'`[^`\n]+`', '', content_no_code)
             
-            # Extract YAML frontmatter tags
+            hashtag_matches = re.findall(hashtag_pattern, content_no_code, re.MULTILINE)
+            
+            # Filter out common false positives and pure numbers
+            excluded_patterns = {
+                'define', 'include', 'ifndef', 'endif', 'pragma', 'undef',
+                'if', 'else', 'error', 'warning', 'line'  # C preprocessor directives
+            }
+            
+            filtered_tags = []
+            for tag in hashtag_matches:
+                if not tag.isdigit() and tag.lower() not in excluded_patterns:
+                    filtered_tags.append(tag)
+            
+            tags.update(filtered_tags)
+
+            # Extract YAML frontmatter tags (R-MARKDOWN-TAG-002)
             yaml_match = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
             if yaml_match:
                 frontmatter = yaml_match.group(1)
                 tag_matches = re.findall(r'^tags?:\s*(.+)$', frontmatter, re.MULTILINE | re.IGNORECASE)
                 for tag_line in tag_matches:
-                    # Handle both YAML list format and comma-separated
+                    # Handle both YAML list format and comma-separated (R-MARKDOWN-TAG-003, R-MARKDOWN-TAG-004)
                     if tag_line.startswith('[') and tag_line.endswith(']'):
                         # YAML list format: [tag1, tag2, tag3]
                         tag_content = tag_line[1:-1]
@@ -247,23 +298,57 @@ class MarkdownHandler(FileHandler):
                     else:
                         # Comma-separated format
                         tag_values = [tag.strip() for tag in tag_line.split(',')]
-                    
+
+                    # Strip quotes and whitespace (R-MARKDOWN-TAG-005)
                     tags.update(filter(None, tag_values))
-            
+
+            # Combine hashtag and frontmatter tags into unified tag list (R-MARKDOWN-TAG-006)
+            # Associate tags with file-level context for linking (R-MARKDOWN-TAG-007)
+            for tag in tags:
+                tag = tag.strip()
+                if tag:
+                    if tag not in tag_map:
+                        tag_map[tag] = []
+                    # For markdown, use empty node_id since tags are file-level
+                    # Use filename as node_text for display
+                    tag_map[tag].append((file_path, '', Path(file_path).name))
+
         except Exception as e:
             print(f"Error extracting tags from {file_path}: {e}")
-        
-        return sorted(list(tags))
-    
+
+        return tag_map
+
     def generate_link(self, file_path: str, node_id: Optional[str] = None) -> str:
-        """Generate link with optional anchor."""
+        """Generate link with optional GitHub-style anchor."""
         rel_path = Path(file_path).relative_to(Path.cwd())
         
         if node_id:
-            # For markdown, create anchor from heading text
-            return f"{rel_path}#{node_id}"
+            # For markdown, we need to convert node info to GitHub-style anchor
+            # The node_id from KBI is meaningless to markdown viewers
+            # We need the actual heading text to create a proper anchor
+            return f"{rel_path}#{node_id}"  # This will be fixed by generate_markdown_anchor
         else:
             return str(rel_path)
+    
+    def generate_markdown_anchor(self, heading_text: str) -> str:
+        """Generate GitHub-style anchor from heading text."""
+        if not heading_text:
+            return ""
+        
+        # Convert to lowercase and replace spaces/special chars with dashes
+        # GitHub style: "ARM Interrupt Handling" -> "arm-interrupt-handling"
+        anchor = heading_text.lower()
+        
+        # Replace spaces and common punctuation with dashes
+        anchor = re.sub(r'[^\w\-_]', '-', anchor)
+        
+        # Remove multiple consecutive dashes
+        anchor = re.sub(r'-+', '-', anchor)
+        
+        # Remove leading/trailing dashes
+        anchor = anchor.strip('-')
+        
+        return anchor
     
     def search_in_node_subtree(self, node: HierarchicalNode, pattern: re.Pattern, 
                               include_descendants: bool = True) -> List[HierarchicalNode]:
