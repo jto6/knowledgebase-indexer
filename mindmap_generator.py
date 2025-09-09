@@ -12,6 +12,7 @@ import re
 from core_handlers import generate_unique_id, get_current_timestamp, HierarchicalNode
 from search import SearchResult
 from keywords import KeywordEntry
+from word_filter import SignificantWordFilter
 
 
 class FreeplaneMapGenerator:
@@ -70,8 +71,9 @@ class FreeplaneMapGenerator:
     def create_mind_map(self, file_system_index: Dict[str, List[HierarchicalNode]],
                        keyword_entries: List[Any],
                        tag_results: Dict[str, List[tuple]],
+                       word_results: Dict[str, Dict],
                        config: Dict[str, Any]) -> str:
-        """Create complete mind map with all three indexes."""
+        """Create complete mind map with all four indexes."""
         
         # Create root map element matching actual Freeplane format
         root = ET.Element('map', {
@@ -97,6 +99,10 @@ class FreeplaneMapGenerator:
         # Add tag index (only if tags found) (R-TAG-005)
         if tag_results:
             tag_node = self._create_tag_index(main_root, tag_results)
+        
+        # Add word index (only if words found) (R-WORD-001)
+        if word_results:
+            word_node = self._create_word_index(main_root, word_results)
         
         # Generate pretty-printed XML
         xml_content = self._prettify_xml(root)
@@ -440,6 +446,160 @@ class FreeplaneMapGenerator:
                     })
         
         return tag_root
+    
+    def _create_word_index(self, parent: ET.Element, 
+                          word_results: Dict[str, Dict]) -> ET.Element:
+        """Create word-based navigation index (R-WORD-001 to R-WORD-015)."""
+        word_root = ET.SubElement(parent, 'node', {
+            'ID': self._generate_unique_id(),
+            'CREATED': get_current_timestamp(),
+            'MODIFIED': get_current_timestamp(),
+            'TEXT': 'Word Index'
+        })
+        
+        # Create hierarchical groupings with maximum 24 children per node (R-WORD-006)
+        word_filter = SignificantWordFilter()
+        sorted_words = sorted(word_results.keys(), key=str.lower)
+        
+        # Create hierarchical groups
+        word_groups = word_filter.create_hierarchical_groups(sorted_words, max_children=24)
+        
+        # Build the hierarchical structure
+        self._build_word_group_nodes(word_root, word_groups, word_results)
+        
+        return word_root
+    
+    def _build_word_group_nodes(self, parent: ET.Element, groups: Dict, word_results: Dict[str, Dict]):
+        """Recursively build word group nodes."""
+        for group_name, group_content in groups.items():
+            if isinstance(group_content, dict) and 'words' in group_content:
+                # This is a leaf group containing words
+                if len(group_content['words']) == 1:
+                    # Single word - create word node directly under parent
+                    word = group_content['words'][0]
+                    self._create_word_node(parent, word, word_results[word])
+                else:
+                    # Multiple words - create group node
+                    group_node = ET.SubElement(parent, 'node', {
+                        'ID': self._generate_unique_id(),
+                        'CREATED': get_current_timestamp(),
+                        'MODIFIED': get_current_timestamp(),
+                        'TEXT': group_name
+                    })
+                    
+                    # Add individual word nodes
+                    for word in sorted(group_content['words'], key=str.lower):
+                        self._create_word_node(group_node, word, word_results[word])
+            elif isinstance(group_content, list):
+                # Direct list of words (when group_name is 'words')
+                if group_name == 'words':
+                    # This is the base case - create word nodes directly
+                    for word in sorted(group_content, key=str.lower):
+                        self._create_word_node(parent, word, word_results[word])
+                else:
+                    # Shouldn't happen, but handle gracefully
+                    group_node = ET.SubElement(parent, 'node', {
+                        'ID': self._generate_unique_id(),
+                        'CREATED': get_current_timestamp(),
+                        'MODIFIED': get_current_timestamp(),
+                        'TEXT': group_name
+                    })
+                    for word in sorted(group_content, key=str.lower):
+                        self._create_word_node(group_node, word, word_results[word])
+            else:
+                # This is an intermediate group with subgroups (dictionary)
+                group_node = ET.SubElement(parent, 'node', {
+                    'ID': self._generate_unique_id(),
+                    'CREATED': get_current_timestamp(),
+                    'MODIFIED': get_current_timestamp(),
+                    'TEXT': group_name
+                })
+                
+                # Recursively process subgroups
+                self._build_word_group_nodes(group_node, group_content, word_results)
+    
+    def _create_word_node(self, parent: ET.Element, word: str, file_matches):
+        """Create node for a single word with file and match children (R-WORD-012, R-WORD-013)."""
+        word_node = ET.SubElement(parent, 'node', {
+            'ID': self._generate_unique_id(),
+            'CREATED': get_current_timestamp(),
+            'MODIFIED': get_current_timestamp(),
+            'TEXT': word
+        })
+        
+        # Handle both test format (list of files) and production format (dict of files->matches)
+        if isinstance(file_matches, list):
+            # Test format: simple list of file paths
+            for file_path in sorted(file_matches, key=lambda x: Path(x).name.lower()):
+                file_name = Path(file_path).name
+                
+                # Generate relative path for portability
+                try:
+                    rel_path = Path(file_path).relative_to(Path.cwd())
+                except ValueError:
+                    rel_path = Path(file_path)
+                
+                # Create simple file node without match instances
+                file_node = ET.SubElement(word_node, 'node', {
+                    'ID': self._generate_unique_id(),
+                    'CREATED': get_current_timestamp(),
+                    'MODIFIED': get_current_timestamp(),
+                    'TEXT': file_name,
+                    'LINK': str(rel_path)
+                })
+        else:
+            # Production format: dictionary of file_path -> match_instances
+            for file_path in sorted(file_matches.keys(), key=lambda x: Path(x).name.lower()):
+                file_name = Path(file_path).name
+                match_instances = file_matches[file_path]
+                
+                # Generate relative path for portability
+                try:
+                    rel_path = Path(file_path).relative_to(Path.cwd())
+                except ValueError:
+                    # Fallback if path is not relative to current directory
+                    rel_path = Path(file_path)
+                
+                # Create file node (R-WORD-012)
+                file_node = ET.SubElement(word_node, 'node', {
+                    'ID': self._generate_unique_id(),
+                    'CREATED': get_current_timestamp(),
+                    'MODIFIED': get_current_timestamp(),
+                    'TEXT': file_name,
+                    'LINK': str(rel_path)
+                })
+                
+                # Create match instance nodes as children of file node (R-WORD-013)
+                for match_instance in match_instances:
+                    node_text = match_instance.get('node_text', 'Content')
+                    node_id = match_instance.get('node_id', '')
+                    node_type = match_instance.get('node_type', 'content')
+                    
+                    # Generate appropriate link with fragment
+                    if node_id:
+                        # For freeplane files, use node ID
+                        if file_path.endswith('.mm'):
+                            link_fragment = f"{rel_path}#{node_id}"
+                        # For markdown files, try to generate GitHub-style anchor
+                        elif file_path.endswith(('.md', '.markdown')):
+                            if node_type == 'heading' and node_text:
+                                anchor = self._generate_markdown_anchor(node_text)
+                                link_fragment = f"{rel_path}#{anchor}" if anchor else str(rel_path)
+                            else:
+                                link_fragment = str(rel_path)  # No fragment for non-heading nodes
+                        else:
+                            link_fragment = str(rel_path)
+                    else:
+                        link_fragment = str(rel_path)
+                    
+                    # Create match instance node
+                    match_node = ET.SubElement(file_node, 'node', {
+                        'ID': self._generate_unique_id(),
+                        'CREATED': get_current_timestamp(),
+                        'MODIFIED': get_current_timestamp(),
+                        'TEXT': node_text if node_text else 'Content',
+                        'LINK': link_fragment
+                    })
     
     def _prettify_xml(self, root: ET.Element) -> str:
         """Convert XML element to pretty-printed string."""

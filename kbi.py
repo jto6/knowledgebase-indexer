@@ -3,10 +3,11 @@
 Knowledgebase Indexer - Creates navigational mind map indexes for structured file collections.
 
 This is the main entry point that implements the functionality described in mmdir_PRD.md.
-It generates Freeplane-compatible mind maps with three navigation views:
+It generates Freeplane-compatible mind maps with four navigation views:
 - File System Index: Hierarchical directory structure
 - Keyword Index: Context-sensitive search results
 - Tag Index: Tag-based file organization
+- Word Index: Significant word frequency index
 """
 
 import sys
@@ -28,6 +29,7 @@ from handlers.markdown_handler import MarkdownHandler
 from search import HierarchicalSearchEngine, SearchResultAggregator
 from keywords import load_keyword_files, KeywordProcessor
 from mindmap_generator import FreeplaneMapGenerator
+from word_filter import SignificantWordFilter
 from logging_config import AppLogger, LoggedOperation, create_component_logger
 
 
@@ -277,9 +279,106 @@ class KnowledgebaseIndexer:
         
         return all_tag_results
     
+    def extract_significant_words(self, files: List[str], handlers: Dict[str, Any]) -> Dict[str, Dict]:
+        """Extract significant words with match instances (R-WORD-012, R-WORD-013, R-WORD-014, R-WORD-015)."""
+        word_filter = SignificantWordFilter()
+        word_to_matches = {}
+        
+        # Get minimum frequency from config, default to 2
+        min_frequency = self.config.get('word_index', {}).get('min_frequency', 2)
+        
+        for file_path in files:
+            handler = handlers.get(file_path)
+            if not handler:
+                continue
+            
+            try:
+                # Get root nodes from handler
+                root_nodes = handler.get_root_nodes(file_path)
+                
+                # Collect word matches from each node
+                def collect_word_matches_recursive(node):
+                    node_content = handler.get_node_content(node)
+                    if node_content:
+                        # Extract significant words from this node
+                        significant_words = word_filter.extract_significant_words(node_content)
+                        
+                        # Record matches for each word
+                        for word in significant_words:
+                            if word not in word_to_matches:
+                                word_to_matches[word] = {}
+                            if file_path not in word_to_matches[word]:
+                                word_to_matches[word][file_path] = []
+                            
+                            # Create match instance
+                            match_instance = {
+                                'node_id': getattr(node, 'id', ''),
+                                'node_text': getattr(node, 'text', ''),
+                                'node_type': getattr(node, 'node_type', 'content'),
+                                'file_path': file_path
+                            }
+                            
+                            # Avoid duplicates
+                            if match_instance not in word_to_matches[word][file_path]:
+                                word_to_matches[word][file_path].append(match_instance)
+                    
+                    # Recurse through children
+                    for child in handler.get_child_nodes(node):
+                        collect_word_matches_recursive(child)
+                
+                for root_node in root_nodes:
+                    collect_word_matches_recursive(root_node)
+                
+                if self.debug:
+                    word_count = sum(len(matches) for matches in word_to_matches.values() 
+                                   if file_path in matches)
+                    if word_count > 0:
+                        print(f"Extracted word matches from {file_path}: {word_count} match instances")
+                
+            except Exception as e:
+                if self.debug:
+                    print(f"Error extracting words from {file_path}: {e}")
+                continue
+        
+        # Filter by minimum frequency (R-WORD-005)
+        filtered_words = {}
+        for word, file_matches in word_to_matches.items():
+            total_files = len(file_matches)
+            if total_files >= min_frequency:
+                filtered_words[word] = file_matches
+        
+        # Apply word consolidation (R-WORD-014, R-WORD-015)
+        word_to_files_simple = {word: list(matches.keys()) for word, matches in filtered_words.items()}
+        consolidated = word_filter.consolidate_word_variations(word_to_files_simple, max_combined=24)
+        
+        # Convert back to match-instance format
+        consolidated_matches = {}
+        for pattern, consolidation_info in consolidated.items():
+            if consolidation_info['is_consolidated']:
+                # Merge matches from all consolidated words
+                merged_matches = {}
+                for original_word in consolidation_info['words']:
+                    if original_word in filtered_words:
+                        for file_path, match_instances in filtered_words[original_word].items():
+                            if file_path not in merged_matches:
+                                merged_matches[file_path] = []
+                            merged_matches[file_path].extend(match_instances)
+                consolidated_matches[pattern] = merged_matches
+            else:
+                # Use original word if available in filtered_words
+                original_word = consolidation_info['words'][0]
+                if original_word in filtered_words:
+                    consolidated_matches[pattern] = filtered_words[original_word]
+        
+        if self.debug:
+            print(f"Consolidated {len(word_to_matches)} words into {len(consolidated_matches)} patterns with frequency >= {min_frequency}")
+        
+        return consolidated_matches
+    
     def generate_mind_map(self, file_system_index: Dict[str, List[HierarchicalNode]],
                          keyword_entries: List[Any],
-                         tag_results: Dict[str, List[tuple]]) -> str:
+                         tag_results: Dict[str, List[tuple]],
+                         word_results: Dict[str, Dict]) -> str:
         """Generate the final mind map file."""
         output_path = self.config['output']['file']
         
@@ -289,6 +388,7 @@ class KnowledgebaseIndexer:
             file_system_index=file_system_index,
             keyword_entries=keyword_entries,
             tag_results=tag_results,
+            word_results=word_results,
             config=self.config
         )
         
@@ -328,10 +428,15 @@ class KnowledgebaseIndexer:
                 print("\n=== Extracting Tags ===")
             tag_results = self.extract_tags(valid_files, handlers)
             
-            # 6. Generate mind map
+            # 6. Extract significant words
+            if self.debug:
+                print("\n=== Extracting Significant Words ===")
+            word_results = self.extract_significant_words(valid_files, handlers)
+            
+            # 7. Generate mind map
             if self.debug:
                 print("\n=== Generating Mind Map ===")
-            output_path = self.generate_mind_map(file_system_index, keyword_entries, tag_results)
+            output_path = self.generate_mind_map(file_system_index, keyword_entries, tag_results, word_results)
             
             return output_path
         
