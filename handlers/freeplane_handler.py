@@ -27,7 +27,7 @@ class FreeplaneHandler(FileHandler):
     def _is_valid_freeplane_file(self, file_path: str) -> bool:
         """Check if file is a valid Freeplane XML file."""
         try:
-            tree = ET.parse(file_path)
+            tree = self._parse_freeplane_xml(file_path)
             root = tree.getroot()
             return root.tag == 'map'
         except ET.ParseError:
@@ -35,10 +35,51 @@ class FreeplaneHandler(FileHandler):
         except Exception:
             return False
     
+    def _parse_freeplane_xml(self, file_path: str) -> ET.ElementTree:
+        """Parse Freeplane XML file with HTML entity support."""
+        try:
+            # First try standard parsing
+            return ET.parse(file_path)
+        except ET.ParseError as e:
+            if 'undefined entity' in str(e):
+                # Handle HTML entities by preprocessing the file
+                return self._parse_with_html_entities(file_path)
+            else:
+                raise
+    
+    def _parse_with_html_entities(self, file_path: str) -> ET.ElementTree:
+        """Parse XML file after replacing common HTML entities."""
+        # Common HTML entities and their numeric equivalents
+        html_entities = {
+            '&nbsp;': '&#160;',
+            '&amp;': '&#38;',
+            '&lt;': '&#60;',
+            '&gt;': '&#62;',
+            '&quot;': '&#34;',
+            '&apos;': '&#39;',
+            '&copy;': '&#169;',
+            '&reg;': '&#174;',
+            '&trade;': '&#8482;',
+            '&mdash;': '&#8212;',
+            '&ndash;': '&#8211;',
+            '&hellip;': '&#8230;'
+        }
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Replace HTML entities with numeric entities
+        for entity, numeric in html_entities.items():
+            content = content.replace(entity, numeric)
+        
+        # Parse the modified content
+        from io import StringIO
+        return ET.parse(StringIO(content))
+    
     def get_root_nodes(self, file_path: str) -> List[HierarchicalNode]:
         """Extract top-level hierarchical nodes from Freeplane file."""
         try:
-            tree = ET.parse(file_path)
+            tree = self._parse_freeplane_xml(file_path)
             root = tree.getroot()
             
             # Find the root node element
@@ -142,7 +183,7 @@ class FreeplaneHandler(FileHandler):
         tag_map = {}
 
         try:
-            tree = ET.parse(file_path)
+            tree = self._parse_freeplane_xml(file_path)
             root = tree.getroot()
 
             # Find all nodes with TAGS attribute (R-TAG-001)
