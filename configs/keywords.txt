@@ -1,0 +1,34 @@
+# Sample keyword file
+# Lines starting with # are comments
+# Use tabs for indentation
+# Leaf entries (no children) are search patterns
+# Non-leaf entries are organizational categories
+
+Programming Concepts
+	Functions
+		function:definition
+		async:function
+		lambda:function
+	Classes
+		class:inheritance
+		abstract:class
+		interface:implementation
+	Error Handling
+		try:catch:exception
+		error:handling:best:practices
+
+Documentation
+	API Documentation
+		api:reference
+		endpoint:documentation
+	User Guides
+		tutorial:beginner
+		guide:advanced:usage
+
+Project Management
+	Planning
+		requirements:analysis
+		project:scope
+	Development Process
+		code:review:process
+		testing:strategy

@@ -1,6 +1,6 @@
 # Knowledgebase Indexer
 
-A Python implementation of the Knowledgebase Indexer that creates navigational mind map indexes for collections of structured files, as specified in `mmdir_PRD.md`.
+A Python implementation of the Knowledgebase Indexer that creates navigational mind map indexes for collections of structured files, as specified in `docs/mmdir_PRD.md`.
 
 ## Features
 
@@ -56,9 +56,10 @@ python3 kbi.py --sample-keywords
 
 The application uses YAML configuration files. Default locations searched:
 1. Command line `--config` argument
-2. `./config/kbi.yml` or `./config/kbi.yaml`
-3. `./kbi.yml` or `./kbi.yaml`
-4. `~/.config/kbi/config.yml`
+2. `./configs/kbi.yml` or `./configs/kbi.yaml`
+3. `./config/kbi.yml` or `./config/kbi.yaml`
+4. `./kbi.yml` or `./kbi.yaml`
+5. `~/.config/kbi/config.yml`
 
 ### Configuration Structure
 
@@ -73,7 +74,7 @@ directories:
 
 keywords:
   files:
-    - "keywords.txt"
+    - "configs/keywords.txt"
 
 output:
   file: "index.mm"
@@ -149,6 +150,6 @@ python3 kbi.py --debug
 
 Generate index with custom keyword searches:
 ```bash
-echo -e "Documentation\n\tAPI\n\t\tapi:reference\n\tGuides\n\t\ttutorial:beginner" > keywords.txt
+echo -e "Documentation\n\tAPI\n\t\tapi:reference\n\tGuides\n\t\ttutorial:beginner" > configs/keywords.txt
 python3 kbi.py --debug
 ```

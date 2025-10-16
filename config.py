@@ -36,6 +36,8 @@ class ConfigLoader:
         
         # Priority order for config discovery
         candidates = [
+            Path.cwd() / "configs" / "kbi.yml",
+            Path.cwd() / "configs" / "kbi.yaml",
             Path.cwd() / "config" / "kbi.yml",
             Path.cwd() / "config" / "kbi.yaml",
             Path.cwd() / "kbi.yml",
