@@ -287,63 +287,118 @@ class SignificantWordFilter:
     def consolidate_word_variations(self, word_to_files: Dict[str, List[str]], max_combined: int = 24) -> Dict[str, Dict]:
         """
         Consolidate word variations using regex patterns (R-WORD-014, R-WORD-015).
-        
+
+        Optimized version that only checks for common suffix patterns instead of
+        comparing every word pair.
+
         Args:
             word_to_files: Mapping of words to files containing them
             max_combined: Maximum combined matches to allow consolidation
-            
+
         Returns:
             Dictionary mapping consolidated patterns to word groups and files
         """
         consolidated = {}
         used_words = set()
         all_words = list(word_to_files.keys())
-        
-        # Process each word to find its variations
+
+        # Build lookup by potential base form (strip common suffixes)
+        base_to_variations = {}
+
+        def get_potential_base(word: str) -> str:
+            """Get the potential base form by stripping common suffixes."""
+            # Try removing common suffixes to find the base
+            suffixes_to_try = ['ing', 'ed', 'er', 'est', 'ly', 'tion', 'sion', 'ment',
+                              'ful', 'less', 'able', 'ible', 's']
+
+            for suffix in suffixes_to_try:
+                if word.endswith(suffix) and len(word) > len(suffix) + 2:
+                    return word[:-len(suffix)]
+
+            return word
+
+        # Group words by potential base form
+        for word in all_words:
+            base = get_potential_base(word)
+            if base not in base_to_variations:
+                base_to_variations[base] = []
+            base_to_variations[base].append(word)
+
+            # Also add the word itself as a potential base
+            if word != base:
+                if word not in base_to_variations:
+                    base_to_variations[word] = []
+                base_to_variations[word].append(word)
+
+        # Process each base to find its variations
+        processed_bases = set()
+
         for base_word in all_words:
             if base_word in used_words:
                 continue
-                
-            variations_found = {base_word: word_to_files[base_word]}
-            
-            # Check for plural forms: sdk -> sdks, apis -> api
-            if not base_word.endswith('s') and len(base_word) >= 3:
-                plural_form = base_word + 's'
-                if plural_form in word_to_files and plural_form not in used_words:
-                    # Check if combined files count is reasonable
-                    total_files = set(word_to_files[base_word])
-                    total_files.update(word_to_files[plural_form])
-                    if len(total_files) <= max_combined:
-                        variations_found[plural_form] = word_to_files[plural_form]
-            
-            # Check for base forms: sdks -> sdk, apis -> api
-            if base_word.endswith('s') and len(base_word) > 3 and not base_word.endswith(('ss', 'us', 'is')):
-                base_form = base_word[:-1]
-                if base_form in word_to_files and base_form not in used_words:
-                    # Check if combined files count is reasonable
-                    total_files = set(word_to_files[base_word])
-                    total_files.update(word_to_files[base_form])
-                    if len(total_files) <= max_combined:
-                        variations_found[base_form] = word_to_files[base_form]
-            
-            # Check for verb forms: process -> processing/processed
-            for other_word in all_words:
-                if (other_word != base_word and 
-                    other_word not in used_words and
-                    other_word not in variations_found):
-                    
-                    # Check if one is a variation of the other
-                    if self._are_word_variations(base_word, other_word):
-                        total_files = set(word_to_files[base_word])
-                        total_files.update(word_to_files[other_word])
+
+            # Get potential base form
+            base_form = get_potential_base(base_word)
+
+            if base_form in processed_bases:
+                continue
+
+            processed_bases.add(base_form)
+
+            # Collect all variations for this base
+            variations_found = {}
+
+            # Check variations from the base lookup
+            if base_form in base_to_variations:
+                for candidate in base_to_variations[base_form]:
+                    if candidate in used_words:
+                        continue
+
+                    if candidate not in variations_found:
+                        variations_found[candidate] = word_to_files[candidate]
+
+            # Also check if the base_word itself has variations
+            if base_word in base_to_variations and base_word != base_form:
+                for candidate in base_to_variations[base_word]:
+                    if candidate in used_words:
+                        continue
+
+                    if candidate not in variations_found:
+                        variations_found[candidate] = word_to_files[candidate]
+
+            # Verify all collected variations actually relate to each other
+            if len(variations_found) > 1:
+                # Verify variations using _are_word_variations for quality control
+                verified_variations = {base_word: word_to_files[base_word]} if base_word in word_to_files else {}
+
+                for candidate in variations_found:
+                    if candidate == base_word:
+                        continue
+
+                    # Check if candidate is a variation of base_word or any verified variation
+                    is_variation = False
+                    for verified in list(verified_variations.keys()):
+                        if self._are_word_variations(verified, candidate):
+                            is_variation = True
+                            break
+
+                    if is_variation:
+                        # Check file count constraint
+                        total_files = set()
+                        for word_files in verified_variations.values():
+                            total_files.update(word_files)
+                        total_files.update(word_to_files[candidate])
+
                         if len(total_files) <= max_combined:
-                            variations_found[other_word] = word_to_files[other_word]
-            
+                            verified_variations[candidate] = word_to_files[candidate]
+
+                variations_found = verified_variations
+
             # If we found variations, create consolidated entry
             if len(variations_found) > 1:
                 # Create pattern name - use shortest word as base with regex
                 base_for_pattern = min(variations_found.keys(), key=len)
-                
+
                 # Check the type of variations to create appropriate pattern
                 words = list(variations_found.keys())
                 if any(w.endswith('s') for w in words) and any(not w.endswith('s') for w in words):
@@ -351,36 +406,45 @@ class SignificantWordFilter:
                     base_root = base_for_pattern.rstrip('s')
                     pattern_name = f"{base_root}s?"
                 elif any(w.endswith(('ing', 'ed', 'er', 'tion', 'sion', 'ment')) for w in words):
-                    # Verb/suffix variations  
+                    # Verb/suffix variations
                     base_root = self._extract_root_word(words)
                     pattern_name = f"{base_root}.*"
                 else:
                     # Other variations
                     pattern_name = f"{base_for_pattern}.*"
-                
+
                 # Combine all files
                 all_files = set()
                 for word_files in variations_found.values():
                     all_files.update(word_files)
-                
+
                 consolidated[pattern_name] = {
                     'words': words,
                     'files': list(all_files),
                     'is_consolidated': True
                 }
-                
+
                 # Mark all words as used
                 used_words.update(words)
-            else:
+            elif base_word in variations_found:
                 # No variations found, keep original
-                if base_word not in used_words:
-                    consolidated[base_word] = {
-                        'words': [base_word],
-                        'files': word_to_files[base_word],
-                        'is_consolidated': False
-                    }
-                    used_words.add(base_word)
-        
+                consolidated[base_word] = {
+                    'words': [base_word],
+                    'files': word_to_files[base_word],
+                    'is_consolidated': False
+                }
+                used_words.add(base_word)
+
+        # Add any remaining words that weren't processed
+        for word in all_words:
+            if word not in used_words:
+                consolidated[word] = {
+                    'words': [word],
+                    'files': word_to_files[word],
+                    'is_consolidated': False
+                }
+                used_words.add(word)
+
         return consolidated
     
     def _are_word_variations(self, word1: str, word2: str) -> bool:
