@@ -13,6 +13,8 @@ It generates Freeplane-compatible mind maps with four navigation views:
 import sys
 import argparse
 import glob
+import os
+import fnmatch
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import traceback
@@ -61,97 +63,113 @@ class KnowledgebaseIndexer:
         self.keyword_processor.set_debug(debug)
     
     def discover_files(self) -> List[str]:
-        """Discover files in directories matching glob patterns, filtered by file_types extensions."""
+        """Discover files in directories matching glob patterns, filtered by file_types extensions.
+
+        Optimized version that uses os.walk with early directory pruning for much better performance.
+        """
         with LoggedOperation('main', 'file_discovery') as op:
             include_dir_patterns = self.config['directories']['include']
             exclude_dir_patterns = self.config['directories'].get('exclude', [])
-            
+
             # Get supported extensions from file_types
             supported_extensions = set()
             for file_type_config in self.config['file_types'].values():
                 supported_extensions.update(file_type_config.get('extensions', []))
-            
+
             AppLogger.log_algorithm_step('main', 'starting_file_discovery', {
                 'include_dir_patterns': len(include_dir_patterns),
                 'exclude_dir_patterns': len(exclude_dir_patterns),
                 'supported_extensions': len(supported_extensions)
             })
-            
+
             self.logger.debug(f"Include directory patterns: {include_dir_patterns}")
             self.logger.debug(f"Exclude directory patterns: {exclude_dir_patterns}")
             self.logger.debug(f"Supported extensions: {sorted(supported_extensions)}")
-            
-            # Find all directories matching include patterns
-            include_directories = set()
+
+            # Resolve include directories (simple patterns, not recursive glob)
+            include_directories = []
             for pattern in include_dir_patterns:
-                matches = glob.glob(pattern, recursive=True)
-                for match in matches:
-                    path = Path(match)
+                path = Path(pattern).expanduser()
+                if path.exists():
                     if path.is_dir():
-                        include_directories.add(path.resolve())
-                    elif path.is_file() and path.suffix in supported_extensions:
-                        # If pattern matches a file directly, include it
-                        include_directories.add(path.parent.resolve())
-                
-                self.logger.debug(f"Directory pattern '{pattern}' matched {len([m for m in matches if Path(m).is_dir()])} directories")
-            
-            # Find directories matching exclude patterns  
-            exclude_directories = set()
-            for pattern in exclude_dir_patterns:
-                matches = glob.glob(pattern, recursive=True)
-                for match in matches:
-                    path = Path(match)
-                    if path.is_dir():
-                        exclude_directories.add(path.resolve())
-                
-                if matches:
-                    self.logger.debug(f"Exclude pattern '{pattern}' matched {len([m for m in matches if Path(m).is_dir()])} directories")
-            
-            # Remove excluded directories from include set
-            search_directories = include_directories - exclude_directories
-            
-            # Find all files with supported extensions in the search directories
+                        include_directories.append(path.resolve())
+                    elif path.is_file():
+                        include_directories.append(path.parent.resolve())
+                else:
+                    self.logger.warning(f"Include pattern does not exist: {pattern}")
+
+            self.logger.info(f"Scanning {len(include_directories)} root directories")
+
+            # Helper function to check if a path matches any exclude pattern
+            def is_excluded(path_str: str) -> bool:
+                """Check if a path matches any exclude pattern."""
+                for pattern in exclude_dir_patterns:
+                    # Handle ** patterns by converting to fnmatch-style
+                    if '**' in pattern:
+                        # Extract the directory name to exclude (e.g., "node_modules" from "**/node_modules/**")
+                        parts = pattern.strip('*').strip('/').split('/')
+                        for part in parts:
+                            if part and part in path_str.split(os.sep):
+                                return True
+                    elif fnmatch.fnmatch(path_str, pattern):
+                        return True
+                return False
+
+            # Walk directories and collect files with early pruning
             all_files = set()
-            for directory in search_directories:
-                file_count = 0
+            dirs_scanned = 0
+            dirs_pruned = 0
+
+            for root_directory in include_directories:
                 try:
-                    for file_path in directory.rglob('*'):
-                        if file_path.is_file() and file_path.suffix in supported_extensions:
-                            # Check if file is in an excluded directory path
-                            file_excluded = False
-                            for exclude_dir in exclude_directories:
-                                try:
-                                    if file_path.is_relative_to(exclude_dir):
-                                        file_excluded = True
-                                        break
-                                except ValueError:
-                                    # Fallback for older Python versions
-                                    if str(exclude_dir) in str(file_path):
-                                        file_excluded = True
-                                        break
-                            
-                            if not file_excluded:
-                                all_files.add(file_path.resolve())
-                                file_count += 1
-                    
-                    self.logger.debug(f"Directory '{directory}' contained {file_count} matching files")
-                    
+                    for dirpath, dirnames, filenames in os.walk(str(root_directory)):
+                        dirs_scanned += 1
+
+                        # Prune excluded directories IN-PLACE to avoid descending into them
+                        # This is the key optimization - we never visit excluded dirs
+                        dirs_to_remove = []
+                        for dirname in dirnames:
+                            full_dir_path = os.path.join(dirpath, dirname)
+                            if is_excluded(full_dir_path):
+                                dirs_to_remove.append(dirname)
+                                dirs_pruned += 1
+
+                        for dirname in dirs_to_remove:
+                            dirnames.remove(dirname)
+
+                        # Process files in this directory
+                        for filename in filenames:
+                            file_path = os.path.join(dirpath, filename)
+
+                            # Check if file has supported extension
+                            if any(filename.endswith(ext) for ext in supported_extensions):
+                                # Double-check the full path isn't in an excluded location
+                                if not is_excluded(file_path):
+                                    all_files.add(file_path)
+
+                        # Progress logging for large scans
+                        if dirs_scanned % 1000 == 0:
+                            self.logger.debug(f"Scanned {dirs_scanned} directories, pruned {dirs_pruned}, found {len(all_files)} files so far...")
+
                 except PermissionError:
-                    self.logger.warning(f"Permission denied accessing directory: {directory}")
+                    self.logger.warning(f"Permission denied accessing directory: {root_directory}")
                     continue
-            
-            # Convert to strings and sort
-            result_files = sorted([str(f) for f in all_files])
-            
+                except Exception as e:
+                    self.logger.error(f"Error scanning directory {root_directory}: {e}")
+                    continue
+
+            # Convert to sorted list
+            result_files = sorted(list(all_files))
+
             AppLogger.log_algorithm_step('main', 'file_discovery_complete', {
-                'include_dirs_found': len(include_directories),
-                'exclude_dirs_found': len(exclude_directories),
-                'search_dirs_final': len(search_directories),
+                'include_dirs': len(include_directories),
+                'dirs_scanned': dirs_scanned,
+                'dirs_pruned': dirs_pruned,
                 'files_found': len(result_files)
             })
-            
-            self.logger.info(f"File discovery complete: {len(result_files)} files to process from {len(search_directories)} directories")
-            
+
+            self.logger.info(f"File discovery complete: {len(result_files)} files found (scanned {dirs_scanned} dirs, pruned {dirs_pruned})")
+
             return result_files
     
     def create_file_handlers(self, files: List[str]) -> Dict[str, Any]:
