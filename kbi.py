@@ -71,6 +71,10 @@ class KnowledgebaseIndexer:
             include_dir_patterns = self.config['directories']['include']
             exclude_dir_patterns = self.config['directories'].get('exclude', [])
 
+            # Automatically exclude the output file to prevent self-indexing
+            output_file = Path(self.config['output']['file']).resolve()
+            self.logger.debug(f"Excluding output file from indexing: {output_file}")
+
             # Get supported extensions from file_types
             supported_extensions = set()
             for file_type_config in self.config['file_types'].values():
@@ -144,7 +148,8 @@ class KnowledgebaseIndexer:
                             # Check if file has supported extension
                             if any(filename.endswith(ext) for ext in supported_extensions):
                                 # Double-check the full path isn't in an excluded location
-                                if not is_excluded(file_path):
+                                # and that it's not the output file
+                                if not is_excluded(file_path) and Path(file_path).resolve() != output_file:
                                     all_files.add(file_path)
 
                         # Progress logging for large scans
