@@ -192,10 +192,11 @@ class TestQuickXML:
             file_index = {"test.md": []}
             keyword_results = {}
             tag_results = {}
+            word_results = {}
             config = {}
-            
+
             result_path = generator.create_mind_map(
-                file_index, keyword_results, tag_results, config
+                file_index, keyword_results, tag_results, word_results, config
             )
             
             assert Path(result_path).exists()
@@ -221,8 +222,9 @@ class TestQuickXML:
             file_index = {"test.md": []}
             keyword_results = {}
             tag_results = {}
-            
-            generator.create_mind_map(file_index, keyword_results, tag_results, {})
+            word_results = {}
+
+            generator.create_mind_map(file_index, keyword_results, tag_results, word_results, {})
             
             # Parse and check node attributes
             tree = ET.parse(output_path)
@@ -282,7 +284,7 @@ class TestQuickIntegration:
             
             # Test basic XML generation
             file_index = {str(test_file): []}
-            output_path = generator.create_mind_map(file_index, {}, {}, config)
+            output_path = generator.create_mind_map(file_index, {}, {}, {}, config)
             
             assert Path(output_path).exists()
     

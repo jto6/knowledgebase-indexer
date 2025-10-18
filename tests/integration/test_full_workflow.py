@@ -39,7 +39,7 @@ class TestFullWorkflow:
             # Create minimal config
             config = {
                 "directories": {
-                    "include": ["*.md", "*.mm"],
+                    "include": [str(temp_dir)],
                     "exclude": []
                 },
                 "keywords": {
@@ -129,7 +129,7 @@ Python supports class inheritance.
             # Create config
             config = {
                 "directories": {
-                    "include": ["*.md"],
+                    "include": [str(temp_dir)],
                     "exclude": []
                 },
                 "keywords": {
@@ -216,7 +216,7 @@ This is a test document with #hashtags and #tutorial content.
             # Create config
             config = {
                 "directories": {
-                    "include": ["*.md", "*.mm"],
+                    "include": [str(temp_dir)],
                     "exclude": []
                 },
                 "keywords": {
@@ -282,7 +282,7 @@ This is a test document with #hashtags and #tutorial content.
             # Create config with include/exclude patterns
             config = {
                 "directories": {
-                    "include": ["**/*.md", "**/*.mm"],
+                    "include": [str(temp_dir)],
                     "exclude": ["**/test_*.md"]
                 },
                 "keywords": {
@@ -353,7 +353,7 @@ This is a test document with #hashtags and #tutorial content.
             # Create config
             config = {
                 "directories": {
-                    "include": ["*.md"],
+                    "include": [str(temp_dir)],
                     "exclude": []
                 },
                 "keywords": {
@@ -396,9 +396,11 @@ This is a test document with #hashtags and #tutorial content.
             os.chdir(str(temp_dir))
             
             # Create config that matches no files
+            # Use a nonexistent directory
+            nonexistent_dir = temp_dir / "nonexistent_dir"
             config = {
                 "directories": {
-                    "include": ["*.nonexistent"],
+                    "include": [str(nonexistent_dir)],
                     "exclude": []
                 },
                 "keywords": {
@@ -408,16 +410,16 @@ This is a test document with #hashtags and #tutorial content.
                     "file": "empty_index.mm"
                 },
                 "file_types": {
-                    "nonexistent": {
-                        "extensions": [".nonexistent"],
+                    "markdown": {
+                        "extensions": [".md"],
                         "handler": "MarkdownHandler"
                     }
                 }
             }
-            
+
             # Should raise error for no files
             generator = KnowledgebaseIndexer(config)
-            
+
             with pytest.raises(ValueError, match="No files found"):
                 generator.run()
                 
@@ -448,7 +450,7 @@ class TestConfigIntegration:
                 }
             }
             
-            config_file = temp_dir / "mmdir.yml"
+            config_file = temp_dir / "kbi.yml"
             with open(config_file, 'w') as f:
                 yaml.dump(config_content, f)
             
@@ -510,7 +512,7 @@ class TestLoggingIntegration:
             # Create config
             config = {
                 "directories": {
-                    "include": ["*.md"],
+                    "include": [str(temp_dir)],
                     "exclude": []
                 },
                 "keywords": {
@@ -539,7 +541,8 @@ class TestLoggingIntegration:
             
             # Should contain startup and workflow messages
             assert "Logging initialized" in log_content
-            assert "Index Generation Process" in log_content or "Building File System Index" in log_content
+            # Check for actual logged messages (not debug print statements)
+            assert "KnowledgebaseIndexer initialized successfully" in log_content or "file_discovery" in log_content
             
         finally:
             os.chdir(original_cwd)
