@@ -1,0 +1,28 @@
+# Sample kbi configuration file
+directories:
+  include:
+    - "/home/jon/TIGoogleDrive/MyMaps"
+    - "/home/jon/dev/research/SDV-research"
+  exclude:
+    - "**/node_modules/**"
+    - "**/.git/**"
+    - "**/build/**"
+    - "**/photos/**"
+    - "**/__pycache__/**"
+    - "**/.venv*/**"
+
+keywords:
+  files:
+    - "/home/jon/TIGoogleDrive/MyMaps/.kw.mmtxt"
+
+output:
+  file: "index.mm"
+  format: "freeplane"
+
+file_types:
+  freeplane:
+    extensions: [".mm"]
+    handler: "FreeplaneHandler"
+  markdown:
+    extensions: [".md", ".markdown"]
+    handler: "MarkdownHandler"
