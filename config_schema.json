@@ -44,7 +44,7 @@
         },
         "format": {
           "type": "string",
-          "enum": ["freeplane"],
+          "enum": ["freeplane", "markdown"],
           "default": "freeplane"
         }
       }

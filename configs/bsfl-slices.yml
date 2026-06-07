@@ -1,0 +1,24 @@
+# Claude-facing Markdown slices over BSFL cards.
+#
+# Card-only scope + the markdown renderer: emits one per-domain slice
+# (<domain>.md) plus an overview INDEX.md into the output directory. A consumer
+# (e.g. the pastor council member) subscribes by reading the relevant slice.
+# For markdown format, `output.file` is the output *directory* for the slices.
+directories:
+  include:
+    - "/home/jon/dev/BSFL"
+  exclude:
+    - "**/.git/**"
+    - "**/__pycache__/**"
+
+keywords:
+  files: []
+
+output:
+  file: "/tmp/kb_slices"
+  format: "markdown"
+
+file_types:
+  card:
+    extensions: [".kb.md"]
+    handler: "CardHandler"

@@ -34,6 +34,7 @@ from handlers.card_handler import CardHandler
 from search import HierarchicalSearchEngine, SearchResultAggregator
 from keywords import load_keyword_files, KeywordProcessor
 from mindmap_generator import FreeplaneMapGenerator
+from markdown_slice_renderer import MarkdownSliceRenderer
 from word_filter import SignificantWordFilter
 from logging_config import AppLogger, LoggedOperation, create_component_logger
 
@@ -439,7 +440,14 @@ class KnowledgebaseIndexer:
             
             # Only process files that have handlers
             valid_files = list(handlers.keys())
-            
+
+            # Renderer dispatch: the markdown renderer is card-centric (per-domain
+            # slices from card records), not the FS/keyword/word model the .mm
+            # renderer consumes, so it has its own short pipeline.
+            output_format = self.config['output'].get('format', 'freeplane')
+            if output_format == 'markdown':
+                return self._render_markdown_slices(valid_files, handlers)
+
             # 3. Build file system index
             if self.debug:
                 print("\n=== Building File System Index ===")
@@ -472,6 +480,34 @@ class KnowledgebaseIndexer:
                 print(f"Error during index generation: {e}")
                 traceback.print_exc()
             raise
+
+    def collect_card_records(self, files: List[str], handlers: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Gather card records from files handled by the CardHandler."""
+        records = []
+        for file_path in files:
+            handler = handlers.get(file_path)
+            if isinstance(handler, CardHandler):
+                try:
+                    records.append(handler.get_card_record(file_path))
+                except Exception as e:
+                    if self.debug:
+                        print(f"Error reading card {file_path}: {e}")
+        return records
+
+    def _render_markdown_slices(self, files: List[str], handlers: Dict[str, Any]) -> str:
+        """Render per-domain Markdown slices (the Claude-facing catalog view)."""
+        if self.debug:
+            print("\n=== Rendering Markdown Slices ===")
+        records = self.collect_card_records(files, handlers)
+        if not records:
+            raise ValueError("No card (*.kb.md) files found for markdown slice output")
+        output_dir = self.config['output']['file']
+        written = MarkdownSliceRenderer(output_dir).render(records)
+        if self.debug:
+            print(f"Wrote {len(written)} slice file(s) to {output_dir}")
+            for path in written:
+                print(f"  {path}")
+        return output_dir
 
 
 def main():
