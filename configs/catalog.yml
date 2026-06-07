@@ -1,0 +1,24 @@
+# Central knowledge-base catalog (cross-repo).
+#
+# The registry of which repos contribute to the catalog (D8). Card-only scope +
+# the markdown renderer: generates per-domain slices into the central catalog
+# home (~/dev/kb/index/<domain>.md) that consumers (council members, projects,
+# ad-hoc sessions) subscribe to. Add more repo roots under `include` over time.
+directories:
+  include:
+    - "/home/jon/dev/BSFL"
+  exclude:
+    - "**/.git/**"
+    - "**/__pycache__/**"
+
+keywords:
+  files: []
+
+output:
+  file: "/home/jon/dev/kb/index"
+  format: "markdown"
+
+file_types:
+  card:
+    extensions: [".kb.md"]
+    handler: "CardHandler"

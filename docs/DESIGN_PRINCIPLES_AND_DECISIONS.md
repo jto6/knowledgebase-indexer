@@ -145,6 +145,15 @@ Each decision records the choice and why; supersessions are noted in the addenda
   `card` + `markdown` + … → full content, local output). An explicit `file_types`
   **replaces** the defaults rather than merging, so scope can actually be
   narrowed. (P9, D2) — see Addendum F. *(Implemented in increment A.)*
+- **D13 — Central catalog home is `~/dev/kb/`; slices live at
+  `~/dev/kb/index/<domain>.md`.** kbi's markdown renderer writes per-domain slices
+  to this predictable path so any consumer can subscribe. The retrieval protocol
+  is defined once in the council `CLAUDE.md`; each council member's `CLAUDE.md`
+  declares only which slice(s) it subscribes to — the protocol is generic, the
+  subscription is per-member. Because Claude Code loads `CLAUDE.md` up the
+  directory tree, a member-only session still inherits the shared protocol.
+  (P2, P7, D9) *(Implemented when wiring the pastor; resolves the §8 slice-home
+  question.)*
 
 ## 5. Card Schema (current)
 
@@ -308,10 +317,15 @@ Done (increment A):
   the `CardHandler` now labels them by the card **title** instead of the filename.
 - `CardHandler` + card scoping via enabled `file_types` (see D12).
 
-Pending (increment B and beyond):
+Done (increment B):
 
-- Add a **markdown renderer** (Claude-facing index) alongside the `.mm` renderer.
-- Emit **per-domain index slices** at predictable paths.
+- **Markdown renderer** — per-domain slices at `~/dev/kb/index/<domain>.md`, each
+  listing per-card title/essence/tags/source, with `builds_on` resolved to
+  titles, a content-clustered tag index, and a glossary (defined term → card).
+- Consumer subscription wired (the pastor) via the shared protocol (D13).
+
+Pending (increment C and beyond):
+
 - Add a **`consolidate`** mode: aggregate tags/terms, propose synonym merges.
 - Build a **term index** (term → canonical defining card) for `[[term]]` linking.
 - Render **`builds_on` / `draws_on`** as cross-area/cross-domain edges in the map.
@@ -321,8 +335,6 @@ Pending (increment B and beyond):
 
 - Whether card authoring is a new `/kb-card` command (distill + frontmatter +
   link reconciliation) or distill + convention.
-- Canonical home and path for per-domain slices (`~/dev/kb/index/<domain>.md`?)
-  and whether a `~/dev/kb/` exists as a system home.
 - Details of the `rename` tooling and slug-redirect handling.
 - When (if) to introduce deep sub-anchor links `[[id#term]]`.
 
