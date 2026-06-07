@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Knowledgebase Indexer - Creates navigational mind map indexes for structured file collections.
+Knowledgebase Indexer - Builds navigational indexes over structured file collections.
 
-This is the main entry point that implements the functionality described in mmdir_PRD.md.
-It generates Freeplane-compatible mind maps with four navigation views:
+This is the main entry point that implements the functionality described in kbi_PRD.md.
+It computes a render-independent index model with four navigation views, then emits
+it through a renderer (Freeplane .mm mind map by default; a Markdown renderer is
+planned). The four views are:
 - File System Index: Hierarchical directory structure
 - Keyword Index: Context-sensitive search results
 - Tag Index: Tag-based file organization
@@ -36,7 +38,7 @@ from logging_config import AppLogger, LoggedOperation, create_component_logger
 
 
 class KnowledgebaseIndexer:
-    """Main application class for generating mind map indexes."""
+    """Main application class for generating knowledge indexes (render-independent model, pluggable renderers)."""
     
     def __init__(self, config: Dict[str, Any]):
         """Initialize with configuration."""
@@ -473,7 +475,7 @@ class KnowledgebaseIndexer:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Generate navigational mind map indexes for structured file collections",
+        description="Generate navigational knowledge indexes for structured file collections (Freeplane .mm by default)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -613,7 +615,7 @@ file_types:
             output_path = generator.run()
         
         main_logger.info(f"Index generation completed successfully: {output_path}")
-        print(f"Mind map index generated: {output_path}")
+        print(f"Index generated: {output_path}")
         
         if args.debug and log_file_path:
             print(f"Debug log available at: {log_file_path}")

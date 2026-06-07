@@ -1,0 +1,376 @@
+# Knowledge Base System — Design Principles and Decisions
+
+Status: Draft / in active design. Started 2026-06-07.
+
+This document captures the architecture, the principles behind it, and the key
+decisions (with rationale) for a personal knowledge base system that is useful
+both to a human (Jon) and to Claude Code.
+
+It sits *above* `kbi_PRD.md`. The PRD specifies the indexer engine (the thing
+that reads many files and emits navigation views); this document specifies the
+larger system the indexer serves, and therefore drives future PRD extensions
+(see "Implications for kbi").
+
+BSFL (`/home/jon/dev/BSFL`) is the **first instance / proving ground**, not the
+target. The system is intended to generalize across spiritual, personal-
+development, financial, technical, and any other research domains.
+
+## 1. Problem and Goals
+
+The knowledge lives as large collections of source material (PDFs, docs, notes)
+scattered across many directories. Two consumers need fast, high-signal access
+to its essence:
+
+- **Human review (purpose #1).** The mind holds a limited working set. Jon wants
+  a distilled, periodically-reviewable summary of the key concepts per source,
+  usable as an index, with a link back to the full material to dig deeper.
+- **Claude / agent retrieval (purpose #2).** Claude Code — especially the
+  advisory council members (e.g. Rev. Samuel Grace, the pastor, over BSFL) —
+  needs to find and pull relevant knowledge for the current context, with low
+  token cost and fast search.
+
+## 2. Core Architecture — Three Layers
+
+The recurring "centralized vs. distributed" tension dissolves once three layers
+that were being conflated are separated:
+
+| Layer          | Artifact                                             | Lives where                     | Maintained how                 |
+|----------------|------------------------------------------------------|---------------------------------|--------------------------------|
+| **1. Card**    | One distillate per source item (lesson, paper, note) | Distributed — beside its source | Authored (via distill tooling) |
+| **2. Shelf**   | Per-consumer index of cards (per area, per domain)   | Anywhere it is consumed         | Generated (a view)             |
+| **3. Catalog** | Cross-domain navigational map + tag/term indexes     | Centralized (in kbi)            | Generated (by kbi)             |
+
+The unifying rule: **the source of truth is always distributed and co-located;
+everything centralized is *generated* from it.** A hand-maintained central
+database is the thing to avoid — it duplicates content and goes stale silently.
+A *derived* central index can never be wrong for long, because it is rebuilt.
+
+## 3. Design Principles
+
+These are the load-bearing rules. Decisions below are applications of them.
+
+- **P1 — Distributed truth, centralized derived views.** Authored content (cards)
+  is co-located with its source. Anything central is generated and rebuildable,
+  never a second source of truth.
+- **P2 — Generated artifacts are free to live anywhere, in any number.** A shelf
+  is a *view* (a query result), so it may be materialized wherever a consumer
+  wants it, in multiple copies, without duplication risk.
+- **P3 — Synthesis before retrieval.** A card is a lossy, judgment-laden
+  *distillation* (core principles + best quotes), not raw text. This is the one
+  thing no search engine provides and the only thing that serves purpose #1.
+  Retrieval (search) is recall; it sits on top of synthesis, never replaces it.
+- **P4 — Bottom-up vocabularies, groomed not authored.** Tags and terms are born
+  on cards, reconciled against what already exists at authoring time, and
+  periodically consolidated by tooling that *proposes* merges for approval.
+  Curation effort scales with vocabulary *drift*, not corpus *size*.
+- **P5 — Plain-text durability.** Cards and indexes are markdown: greppable,
+  diffable, git-versioned, portable, and they survive tooling changes. Opaque
+  infrastructure (e.g. a vector store) is added only when measured, and never as
+  the foundation.
+- **P6 — Earn your place (anti-clutter).** Every schema field and every artifact
+  must be consumed by a renderer, a tool, or a human follow-link. Unused
+  structure is removed.
+- **P7 — Consumers pull; the KB never pushes.** A consumer (council member,
+  project, ad-hoc session) subscribes by *referencing* a domain's index. This is
+  one uniform mechanism for all consumers.
+- **P8 — Readable surface over a stable anchor.** Identity is a stable opaque
+  anchor; humans interact through readable aliases and surface text. Renames are
+  a tooling operation, not a manual hazard.
+- **P9 — One model, many renderers.** The indexer computes one index model and
+  renders it multiple ways (human mind map, Claude markdown, per-domain slices).
+
+## 4. Key Decisions
+
+Each decision records the choice and why; supersessions are noted in the addenda.
+
+- **D1 — Three-layer model (card / shelf / catalog).** See §2. Resolves the
+  centralized-vs-distributed question by layer rather than globally. (P1, P2)
+- **D2 — Cards live in a per-directory `.kb/` folder.** Each source directory
+  gets its own hidden `.kb/` holding that item's card(s). Chosen over both a
+  visible co-located file (clutter) and a single top-level mirrored tree (a
+  parallel structure to keep in sync). The card never separates from its source,
+  the link-back is a relative path, and there is no second tree to maintain;
+  when a folder moves, its `.kb/` rides along. (P1, P6)
+- **D3 — Card identity is a stable UUID, with an optional human slug alias.**
+  `id` is an immortal UUID (never changes, never reused) that everything resolves
+  to. `slug` is a mutable, readable alias for the places UUIDs hurt readability
+  (frontmatter cross-refs). Inline links carry surface text — `[[target|surface
+  text]]` — so prose stays readable regardless of the target form. A `rename`
+  tool updates references; stale slugs may remain as redirects. (P8)
+- **D4 — Two link tiers.** `builds_on` (frontmatter, card → card) expresses coarse
+  prerequisite/foundation structure. Inline `[[term]]` links express fine-grained
+  Wikipedia-style "defined over there" references, resolved via a term index
+  (term → canonical defining card). Deep sub-anchor links (`[[id#term]]`) are
+  deferred. (P4, P8)
+- **D5 — Tags and terms are bottom-up and groomed.** No top-down master
+  vocabulary is authored. Authoring reconciles against existing tags/terms
+  (reuse > invent); a `consolidate` tool aggregates across all cards and proposes
+  synonym/near-duplicate merges for approval. Each domain is *seeded* with ~10–15
+  anchor tags so early cards have something to reconcile against. (P4)
+- **D6 — Profiles separate "what to distill" from "how."** A profile = distill
+  level + quotes on/off (+ which seed vocabulary). Many domains map to one
+  profile (e.g. `spiritual` and `personal-dev` both use the quotes profile;
+  `technical` uses no quotes). (P6)
+- **D7 — Domains are declared per-area, not decreed centrally.** Each area
+  declares its `domain` in its `.kb/kb.yml`; the union of declarations *is* the
+  domain vocabulary. Domains are few and slow-changing, so bottom-up declaration
+  suffices. `domain → profile` is many-to-one; `domain → consumer` is
+  many-to-many. (P4, P7)
+- **D8 — Two config tiers.** The **central kbi config** declares *which roots are
+  in the catalog* (the registry of knowledge bases / index scope). The
+  **per-area `.kb/kb.yml`** declares that area's `domain`, `profile`, `seed_tags`,
+  and `draws_on`. (P1, P7)
+- **D9 — Uniform subscription model.** Consumers pull from a domain's index slice
+  published at a predictable path (e.g. `~/dev/kb/index/<domain>.md`). Modes:
+  persistent (a project's `CLAUDE.md` references the slice + a retrieval
+  protocol), declared (an area's `kb.yml` `draws_on:` lists upstream domains, and
+  tooling generates the `CLAUDE.md` stanza), and ad-hoc (an in-session pointer,
+  or a future `/kb-use <domain>` command). Council members are just one kind of
+  consumer. (P7)
+- **D10 — Retrieval default is native grep/read over curated cards + slices.**
+  Over a distilled, well-tagged card set, Claude Code's native lexical retrieval
+  is high-signal enough to be the default. No vector store unless a recall gap is
+  measured; if added, it embeds the *cards* (and optionally sources), runs
+  locally, and sits on top of the card layer. (P3, P5) — see Addendum A.
+- **D11 — `/kb-import` is deprecated to a narrow role.** Built around old Claude
+  Code limits, now largely superseded by cards + native source reading. Either
+  remove it or reduce it to archiving *volatile remote URLs* that may vanish.
+  Tracked as a todo. (P6) — see Addendum D.
+
+## 5. Card Schema (current)
+
+Frontmatter:
+
+- `id` (required) — stable UUID; the immortal handle everything resolves to.
+- `slug` (optional, recommended) — readable alias for cross-refs and links.
+- `title` (required) — human label.
+- `source` (required) — file, directory, URL, or a list of these; defaults to
+  `..` (the directory the `.kb/` sits in) when the card summarizes the whole
+  folder. The "dig deeper" follow-link.
+- `domain` (required) — routes to a consumer slice and selects the profile.
+- `tags` (required) — bottom-up, reconciled content taxonomy.
+- `builds_on` (optional) — list of card ids/slugs (prerequisite links).
+- `defines` (optional) — terms this card is the canonical home for (feeds the
+  term index / glossary).
+- `related` (optional, deferred) — lateral links; omitted until a real need.
+- `created` / `updated` (optional) — `updated` vs source date flags staleness.
+- `source_hash` (optional) — change detection for regeneration (manifest hash for
+  directory sources).
+- `meta` (optional) — open map for domain-specific keys (e.g. `scripture`,
+  `ticker`, `cve`) so the core schema stays universal.
+
+Body:
+
+- `# Title` (H1) — headers matter because the indexer builds hierarchy from them.
+- `> essence` — a one-sentence blockquote; the mandatory hook hoisted into shelves
+  and map nodes.
+- `## Core Concepts` — distilled nested bullets; inline `[[term]]` links allowed.
+- `## Key Quotes` — present only for quote-enabled profiles (spiritual,
+  personal-dev); absent for technical.
+
+A **glossary card** is not a special type — it is simply a card whose `defines`
+is populated and whose body defines that one concept.
+
+## 6. Area Configuration (`kb.yml`)
+
+One `kb.yml` lives at each knowledge-base area root, at `<area>/.kb/kb.yml`. It
+applies to the **whole subtree** beneath it; the effective config for any card is
+the nearest `kb.yml` found walking up from the card. Normally there is exactly
+one per area (e.g. `/home/jon/dev/BSFL/.kb/kb.yml`), but a sub-level may override
+if ever needed. It is deliberately minimal (P6): only `domain` is required, and
+everything else is defaulted or omitted.
+
+### 6.1 Fields
+
+- `domain` (required, string) — the area's domain. Also serves as the area's key
+  in the catalog and the target name for subscriptions, so it must be unique
+  across the catalog (one area per domain for now). May be broad (`technical`) or
+  granular (`sdv-research`) — granularity is the author's choice (P4, D7).
+- `title` (optional, string) — friendly area name for the catalog node and the
+  per-domain slice header. Defaults to the directory name.
+- `description` (optional, string) — one-line area summary for the slice header.
+- `profile` (optional, string) — named distill profile. Defaults from `domain`
+  (see 6.2). Specify only to override the domain's default.
+- `distill_level` (optional, 1–3) — advanced override of the resolved profile's
+  level. Rarely needed.
+- `quotes` (optional, bool) — advanced override of the resolved profile's quotes
+  setting. Rarely needed.
+- `seed_tags` (optional, list) — ~10–15 anchor tags that early cards reconcile
+  against, so the bottom-up vocabulary converges instead of sprawling (P4, D5).
+- `meta_fields` (optional, list) — domain-specific frontmatter keys cards in this
+  area should carry (e.g. `scripture`), so the authoring step knows to extract
+  them into the card's `meta` map.
+- `draws_on` (optional, list of domains) — upstream domains this area subscribes
+  to. Drives the subscription wiring (D9): tooling can generate this area's
+  `CLAUDE.md` KB-access stanza, and the catalog renders the dependency as a
+  cross-domain edge.
+
+### 6.2 Profiles and resolution
+
+A profile is "how to distill" = a distill level + quotes on/off (D6). Profiles
+are engine knowledge (a small, slow-changing table), not a hand-maintained
+content vocabulary, so their definitions live centrally in kbi. Built-in defaults:
+
+| Profile      | distill_level | quotes | Typical domains         |
+|--------------|---------------|--------|-------------------------|
+| `standard`   | 2             | false  | technical, finance, sdv |
+| `reflective` | 2             | true   | spiritual, personal-dev |
+| `deep`       | 3             | true   | high-value material     |
+
+Domain → default profile: `spiritual` and `personal-dev` → `reflective`; all
+other / unknown domains → `standard`. Resolution precedence for the effective
+distill behavior:
+
+1. explicit `distill_level` / `quotes` in `kb.yml` (advanced override), else
+2. the named `profile` in `kb.yml`, else
+3. the domain's default profile, else
+4. `standard`.
+
+### 6.3 Examples
+
+BSFL (the spiritual proving ground), at `/home/jon/dev/BSFL/.kb/kb.yml`:
+
+```yaml
+domain: spiritual
+title: Bible Studies for Life
+# profile: reflective        # default for spiritual; shown for clarity only
+seed_tags:
+  - discipleship
+  - grace
+  - faith
+  - prayer
+  - forgiveness
+  - identity-in-christ
+  - the-holy-spirit
+  - surrender
+  - obedience
+  - suffering
+  - community
+  - witness
+meta_fields:
+  - scripture
+```
+
+A technical area that builds on another, at
+`/home/jon/dev/SDV-SRD/.kb/kb.yml`:
+
+```yaml
+domain: sdv-srd
+title: SDV System Requirements
+draws_on:
+  - sdv-research
+seed_tags:
+  - requirements
+  - architecture
+  - safety
+  - autosar
+  - middleware
+```
+
+The upstream area it subscribes to, at
+`/home/jon/dev/research/SDV-research/.kb/kb.yml`:
+
+```yaml
+domain: sdv-research
+title: SDV Research
+seed_tags:
+  - architecture
+  - middleware
+  - safety
+  - virtualization
+  - standards
+```
+
+Note that per-domain slice *output* paths (e.g. `~/dev/kb/index/<domain>.md`) are
+a catalog/engine concern declared in the central kbi config, not in `kb.yml`,
+keeping the area config focused on what the area *is* rather than where the
+catalog writes.
+
+## 7. Implications for kbi (future PRD extensions)
+
+The decisions lean harder on the indexer than today's implementation. All are
+*additive* to the existing one-model architecture (P9):
+
+- Parse **YAML frontmatter `tags`** (not only inline tags).
+- Include `**/.kb/**/*.md` so cards are discovered despite the dot-directory.
+- Add a **markdown renderer** (Claude-facing index) alongside the `.mm` renderer.
+- Emit **per-domain index slices** at predictable paths.
+- Add a **`consolidate`** mode: aggregate tags/terms, propose synonym merges.
+- Build a **term index** (term → canonical defining card) for `[[term]]` linking.
+- Render **`builds_on` / `draws_on`** as cross-area/cross-domain edges in the map.
+- Provide a **`rename`** operation (id/slug rename + reference update).
+
+## 8. Open Questions
+
+- Whether card authoring is a new `/kb-card` command (distill + frontmatter +
+  link reconciliation) or distill + convention.
+- Canonical home and path for per-domain slices (`~/dev/kb/index/<domain>.md`?)
+  and whether a `~/dev/kb/` exists as a system home.
+- Details of the `rename` tooling and slug-redirect handling.
+- When (if) to introduce deep sub-anchor links `[[id#term]]`.
+
+## Addenda — Considerations
+
+These capture the deeper deliberations behind the decisions, for future readers
+who want the "why" and the roads not taken.
+
+### Addendum A — Structured metadata vs. general semantic search
+
+Question: instead of explicit cards/metadata, should effort go into a general
+LLM/vector search capability (e.g. Vectara) over all the raw content?
+
+Conclusion: **they are complementary, not a fork** — the card layer is the ideal
+*substrate* for semantic search, not an alternative to it. Reasoning:
+
+- A card performs **synthesis** (distillation to core principles + best quotes).
+  A vector index performs **none** — it returns raw chunks. Purpose #1 (periodic
+  human review) is served *only* by the card; you cannot review a vector store.
+- The corpus has heavy duplication (multiple versions per lesson) and boilerplate.
+  Raw RAG has no notion of *canonical*; it returns near-duplicate, low-signal
+  chunks and burns the context window. The card is the one curated representation.
+- Vectors give **similarity**, never **relationship**. `builds_on`, definitions,
+  and the navigational map are graph queries semantic search cannot answer.
+- Vectors uniquely win on **recall** (the untagged long tail) and **zero authoring
+  cost**, which is real and valuable.
+
+Recommended sequencing: (1) build the card layer; (2) for Claude retrieval, start
+with native grep/read over curated cards + generated slices — likely sufficient,
+zero infra; (3) add semantic search only on a *measured* recall gap, embedding the
+*cards* (and optionally sources), running **locally** (pgvector / LanceDB /
+sqlite-vec) rather than a third-party SaaS, given the sensitivity of personal
+spiritual and financial content. Heuristic: *cards answer "what do I know and
+what's the essence?"; vectors answer "where, in everything, is this mentioned?"* —
+synthesis is needed first and cannot be outsourced to an embedding model.
+
+### Addendum B — Centralized vs. distributed storage
+
+Resolved by the three-layer model (D1): distributed authored cards, centralized
+*generated* catalog. The shelf, being generated, is location-free (P2) and is
+materialized per consumer — which is the same thing as the per-domain slice in
+the subscription model (D9).
+
+### Addendum C — UUID vs. readable-slug identity
+
+Initial position favored readable slugs (to preserve `[[wiki-link]]` ergonomics).
+Superseded by D3: because `[[target|surface text]]` separates the link *target*
+from the displayed *text*, and a term index resolves surface → card regardless,
+the target may be an opaque UUID without harming prose readability. UUID gives
+mechanical stability and collision-freedom; the optional `slug` restores
+readability for frontmatter cross-refs. Best of both: UUID anchor + slug surface.
+
+### Addendum D — `/kb-import` relevance
+
+`/kb-import` (and its `.kbmap`) was built around earlier Claude Code limitations
+(no native PDF/DOCX reading, weaker WebFetch). Cards + native source reading now
+cover almost all of its use. It should be removed or reduced to a single narrow
+job — archiving volatile remote URLs that may change or disappear (the one thing a
+`source:` link cannot guarantee). The only salvageable idea is `source_hash` for
+staleness detection, now folded into the card schema. Tracked as a todo (D11, P6).
+
+### Addendum E — Per-directory `.kb/` vs. top-level mirror
+
+A single top-level `.kb/` mirroring the whole tree was rejected: it is a second
+structure that must be kept consistent with the real tree on every move/rename. A
+per-directory `.kb/` inherits the real tree's structure for free and travels with
+its source. Hidden dotfiles are slightly easier to forget, but routine
+regeneration (kbi / roll-up) surfaces them, so the risk is low.

@@ -1,9 +1,29 @@
-# Product Requirements Document: Index Generator
+# Product Requirements Document: Knowledgebase Indexer (KBI)
 
-# PART I: REQUIREMENTS
+## PART I: REQUIREMENTS
 
 ## 1. Overview
-The Index Generator creates navigational mind map indexes for collections of structured files. It generates a Freeplane mind map (.mm) file that provides three distinct navigation views of files matching configurable patterns.
+
+The Knowledgebase Indexer builds navigational indexes over collections of
+structured files. Its core output is a **render-independent index model** — four
+navigation views (File System, Keyword, Tag, Word) computed from files matching
+configurable patterns. That model is then emitted by one or more **renderers**.
+
+The requirements in this document describe the index model in render-neutral
+terms: a *node* is a model element, a *branch* is a view, and a *link* is a
+reference from one element to a file (or to a location within a file). Each
+renderer materializes those concepts in its own form.
+
+### 1.1 Renderers
+
+- **Freeplane `.mm`** — the reference renderer (a navigable mind map). Renderer-
+  specific requirements live in §2.5 and in Part II §4. This is the only renderer
+  the original implementation targeted, and the default today.
+- **Markdown** — a planned renderer producing a compact, greppable, Claude-facing
+  index (and per-domain slices). See `DESIGN_PRINCIPLES_AND_DECISIONS.md`.
+
+Renderers are additive over one shared index model (one model, many renderers);
+adding a renderer must not require changing the model or the view requirements.
 
 ## 2. Functional Requirements
 
@@ -56,7 +76,11 @@ The Index Generator creates navigational mind map indexes for collections of str
 - **R-WORD-018**: Filter out pure numbers and predominantly numeric strings
 - **R-WORD-019**: Preserve technical abbreviations and acronyms (API, HTTP, CPU, etc.)
 
-### 2.5 Output Generation
+### 2.5 Output Generation (Freeplane `.mm` renderer)
+
+These requirements are specific to the reference Freeplane renderer; other
+renderers (e.g. the planned Markdown renderer) satisfy their own equivalents.
+
 - **R-OUT-001**: Generate valid Freeplane-compatible .mm XML files
 - **R-OUT-002**: Use human-readable pretty-printed XML formatting
 - **R-OUT-003**: Assign unique node IDs across entire output file
@@ -212,19 +236,20 @@ file_types:
 
 ---
 
-# PART II: INFORMATIVE
+## PART II: INFORMATIVE
 
 ## 1. Implementation Architecture
 
 ### 1.1 Processing Pipeline
 The system follows a multi-stage pipeline:
+
 1. Configuration loading and validation
 2. Directory scanning and file discovery  
 3. File type detection and handler selection
 4. Content extraction and hierarchical indexing
 5. Hierarchical context-sensitive search execution
 6. Result aggregation and grouping
-7. XML generation and output formatting
+7. Rendering and output formatting (Freeplane `.mm` by default)
 
 ### 1.2 Key Design Patterns
 
@@ -248,6 +273,7 @@ The algorithm implements a sophisticated hierarchical scope-narrowing process:
 
 ### 2.2 Early Termination Strategy
 For non-final terms in a search sequence:
+
 - **Subtree Matching**: When searching within a node's subtree, return the first match found
 - **Match Priority**: If the parent node itself matches, return it; otherwise return the first matching descendant
 - **Traversal Termination**: Stop searching the subtree after finding the first match to preserve the specific hierarchical context
@@ -256,6 +282,7 @@ This ensures that subsequent search terms operate within a specific hierarchical
 
 ### 2.3 Final Term Collection
 For the final term in a search sequence:
+
 - **Complete Collection**: Return all matches within the established hierarchical scope
 - **Exhaustive Search**: Continue searching through all nodes in the constrained subtree
 - **Context Preservation**: All final matches are guaranteed to be within the hierarchical context established by previous terms
@@ -265,20 +292,24 @@ For the final term in a search sequence:
 ### 3.1 Hierarchy Model Types
 
 **XML Node Hierarchy** (e.g., Freeplane .mm files):
+
 - Parent-child relationships defined by XML element nesting
 - Navigation follows DOM tree structure
 - Search scope constrained by XML parent-child relationships
 
 **Heading Level Hierarchy** (e.g., Markdown files):
+
 - Parent-child relationships defined by heading level (H1 > H2 > H3, etc.)
 - Node content includes heading text plus all content until next same-or-higher level heading
 - Search scope follows heading hierarchy and content sections
 
 **Nested List Hierarchy** (e.g., Markdown lists, structured text):
+
 - Parent-child relationships defined by list nesting or indentation levels
 - Search scope follows list item hierarchy
 
 **Composite Hierarchy** (e.g., Markdown with both headers and lists):
+
 - Combines multiple hierarchy models within same file
 - Headers create primary structure, nested lists create sub-structure within header sections
 
@@ -304,6 +335,7 @@ More content.
 ```
 
 Node structure:
+
 - "Main Topic" node contains: heading text + "Some introductory content here." + "A paragraph that belongs to Main Topic."
 - "Subtopic A" node (child of Main Topic) contains: heading text + "Content specific to Subtopic A."
 - "Detail 1" node (child of Subtopic A) contains: heading text + "Detailed information."
@@ -357,12 +389,17 @@ class HierarchicalHandler(FileHandler):
 
 ## 4. Freeplane .mm File Compliance
 
+This section specifies the reference Freeplane renderer. Planned renderers (e.g.
+the Markdown / Claude-facing renderer) have their own output specifications and
+are not bound by these XML requirements.
+
 ### 4.1 Critical XML Structure
 Freeplane requires specific XML structure for compatibility:
 
 **Root Element**: Must be `<map version="freeplane 1.12.1">`
 
 **Node Requirements**: Each node must include:
+
 - `ID` attribute: Unique identifier (format: `ID_` + uppercase hex)
 - `CREATED` and `MODIFIED` attributes: Timestamp format `YYYYMMDDTHHMMSS`  
 - `TEXT` attribute: Node display text
@@ -561,6 +598,7 @@ def validate_config(config_data, schema_path):
 
 ### 7.2 Configuration Discovery Order
 Search for configuration files in this priority order:
+
 1. Command line `--config` argument
 2. `./config/` in current working directory
 3. User configuration directory (`~/.config/mmdir/`)

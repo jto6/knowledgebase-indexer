@@ -1,6 +1,6 @@
 # Knowledgebase Indexer
 
-A Python implementation of the Knowledgebase Indexer that creates navigational mind map indexes for collections of structured files, as specified in `docs/mmdir_PRD.md`.
+A Python implementation of the Knowledgebase Indexer that builds navigational indexes over collections of structured files. It computes a render-independent index model and emits it through renderers — Freeplane `.mm` mind maps today, with a Markdown (Claude-facing) renderer planned. See `docs/kbi_PRD.md`.
 
 ## Features
 
@@ -8,7 +8,7 @@ A Python implementation of the Knowledgebase Indexer that creates navigational m
 - **Keyword Index**: Context-sensitive search with hierarchical scope narrowing
 - **Tag Index**: Tag-based file organization
 - **Extensible Architecture**: Plugin-based file handlers
-- **Freeplane Compatibility**: Generates valid Freeplane .mm files
+- **Pluggable Renderers**: Freeplane `.mm` mind maps today; a Markdown (Claude-facing) renderer is planned
 
 ## Installation
 
@@ -55,6 +55,7 @@ python3 kbi.py --sample-keywords
 ## Configuration
 
 The application uses YAML configuration files. Default locations searched:
+
 1. Command line `--config` argument
 2. `./configs/kbi.yml` or `./configs/kbi.yaml`
 3. `./config/kbi.yml` or `./config/kbi.yaml`
@@ -135,7 +136,7 @@ The implementation follows the PRD's modular architecture:
 
 ## Output
 
-Generates Freeplane-compatible .mm files with three main branches:
+Produces a render-independent index model, emitted as a Freeplane `.mm` mind map by default (a Markdown renderer is planned), with navigation branches:
 
 1. **File System Index**: Directory structure with file hierarchy
 2. **Keyword Index**: Search results organized by keyword sequences

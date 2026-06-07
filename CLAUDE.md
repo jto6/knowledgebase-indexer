@@ -4,14 +4,14 @@
 
 ## Project Overview
 
-A Python implementation of the Knowledgebase Indexer that creates navigational mind map indexes for collections of structured files. Generates Freeplane-compatible .mm files with three main navigation views: File System Index, Keyword Index, and Tag Index.
+A Python implementation of the Knowledgebase Indexer that builds navigational indexes over collections of structured files. It computes a render-independent index model with four navigation views — File System, Keyword, Tag, and Word — then emits it through a renderer (Freeplane `.mm` mind map by default; a Markdown / Claude-facing renderer is planned).
 
 ## Primary Requirement: Follow the PRD
 
-**CRITICAL**: Always reference and follow `docs/mmdir_PRD.md` when implementing any feature or making changes. The PRD contains detailed requirements with specific identifiers (e.g., R-KW-SYNTAX-007) that must be implemented exactly as specified.
+**CRITICAL**: Always reference and follow `docs/kbi_PRD.md` when implementing any feature or making changes. The PRD contains detailed requirements with specific identifiers (e.g., R-KW-SYNTAX-007) that must be implemented exactly as specified.
 
 ### Before Making Changes:
-1. Read the relevant section of `docs/mmdir_PRD.md`
+1. Read the relevant section of `docs/kbi_PRD.md`
 2. Identify the specific requirement IDs that apply
 3. Implement according to the PRD specifications
 4. Reference the requirement IDs in commit messages and code comments
@@ -20,7 +20,7 @@ A Python implementation of the Knowledgebase Indexer that creates navigational m
 
 - **Language**: Python 3
 - **Configuration**: YAML files
-- **Output Format**: Freeplane XML (.mm files)
+- **Renderers**: Freeplane `.mm` mind map (default); Markdown / Claude-facing (planned)
 - **File Processing**: XML parsing, Markdown parsing
 - **Dependencies**: See `requirements.txt`
 
@@ -104,7 +104,7 @@ kbi/
 │   └── keywords.txt  # Sample keyword file
 ├── docs/             # Project documentation
 │   ├── CODING_STYLE.md
-│   ├── mmdir_PRD.md  # Product Requirements Document
+│   ├── kbi_PRD.md     # Product Requirements Document
 │   ├── PRD_CHECKLIST.md
 │   └── TESTING_GUIDE.md
 └── requirements.txt   # Python dependencies
