@@ -153,7 +153,12 @@ class ConfigLoader:
         if "output" in config:
             merged["output"].update(config["output"])
         
+        # file_types REPLACES the defaults rather than merging into them. The set
+        # of enabled file types defines the index scope, so merging would make it
+        # impossible to narrow scope (e.g. a card-only catalog would still inherit
+        # the default markdown/freeplane types and index raw sources). A config
+        # that wants a deep index lists every type it needs explicitly.
         if "file_types" in config:
-            merged["file_types"].update(config["file_types"])
-        
+            merged["file_types"] = config["file_types"]
+
         return merged

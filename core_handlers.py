@@ -165,12 +165,27 @@ class HandlerRegistry:
         return self._instances[name]
     
     def get_handler_for_file(self, file_path: str, file_types_config: Dict[str, Any]) -> Optional[FileHandler]:
-        """Find appropriate handler for a file."""
+        """Find the appropriate handler for a file.
+
+        When more than one file type can handle a file, the most specific match
+        wins — i.e. the handler whose configured extension is the longest suffix
+        of the filename. This makes a compound extension like `.kb.md` take
+        precedence over `.md` regardless of config ordering, so card files are
+        always handled by the CardHandler.
+        """
+        filename = Path(file_path).name
+        best_handler = None
+        best_specificity = -1
         for type_name, type_config in file_types_config.items():
             handler = self.get_handler(type_config['handler'], type_config)
-            if handler and handler.can_handle(file_path):
-                return handler
-        return None
+            if not (handler and handler.can_handle(file_path)):
+                continue
+            extensions = type_config.get('extensions', [])
+            specificity = max((len(ext) for ext in extensions if filename.endswith(ext)), default=0)
+            if specificity > best_specificity:
+                best_specificity = specificity
+                best_handler = handler
+        return best_handler
     
     def load_default_handlers(self):
         """Load default handlers."""
@@ -184,6 +199,12 @@ class HandlerRegistry:
         try:
             from handlers.markdown_handler import MarkdownHandler
             self.register_handler('MarkdownHandler', MarkdownHandler)
+        except ImportError:
+            pass
+
+        try:
+            from handlers.card_handler import CardHandler
+            self.register_handler('CardHandler', CardHandler)
         except ImportError:
             pass
 

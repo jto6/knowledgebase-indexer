@@ -1,0 +1,29 @@
+# Deep within-repo index over BSFL Fall 2025.
+#
+# Within-repo scope: enable all file types so kbi deep-indexes the full content
+# (raw plans, guides) AND parses cards card-aware. Output stays local to the repo.
+# Because an explicit file_types replaces the defaults, every wanted type is listed.
+directories:
+  include:
+    - "/home/jon/dev/BSFL/Fall 2025"
+  exclude:
+    - "**/.git/**"
+    - "**/__pycache__/**"
+
+keywords:
+  files: []
+
+output:
+  file: "/tmp/bsfl_deep_index.mm"
+  format: "freeplane"
+
+file_types:
+  freeplane:
+    extensions: [".mm"]
+    handler: "FreeplaneHandler"
+  markdown:
+    extensions: [".md", ".markdown"]
+    handler: "MarkdownHandler"
+  card:
+    extensions: [".kb.md"]
+    handler: "CardHandler"

@@ -30,6 +30,7 @@ from core_handlers import handler_registry, HierarchicalNode
 
 from handlers.freeplane_handler import FreeplaneHandler
 from handlers.markdown_handler import MarkdownHandler
+from handlers.card_handler import CardHandler
 from search import HierarchicalSearchEngine, SearchResultAggregator
 from keywords import load_keyword_files, KeywordProcessor
 from mindmap_generator import FreeplaneMapGenerator
@@ -55,6 +56,7 @@ class KnowledgebaseIndexer:
         # Register handlers
         handler_registry.register_handler('FreeplaneHandler', FreeplaneHandler)
         handler_registry.register_handler('MarkdownHandler', MarkdownHandler)
+        handler_registry.register_handler('CardHandler', CardHandler)
         
         self.logger.info("KnowledgebaseIndexer initialized successfully")
     

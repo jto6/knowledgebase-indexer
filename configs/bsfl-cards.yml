@@ -1,0 +1,23 @@
+# Distilled card catalog over BSFL.
+#
+# Cross-repo catalog scope: only the `card` file type is enabled, so kbi indexes
+# only distilled `*.kb.md` cards and ignores raw sources (Plan.md, PDFs, guides).
+# For a deep within-repo index, add `markdown` / `freeplane` file types here.
+directories:
+  include:
+    - "/home/jon/dev/BSFL"
+  exclude:
+    - "**/.git/**"
+    - "**/__pycache__/**"
+
+keywords:
+  files: []
+
+output:
+  file: "/tmp/bsfl_cards_index.mm"
+  format: "freeplane"
+
+file_types:
+  card:
+    extensions: [".kb.md"]
+    handler: "CardHandler"
