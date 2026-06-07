@@ -136,6 +136,15 @@ Each decision records the choice and why; supersessions are noted in the addenda
   Code limits, now largely superseded by cards + native source reading. Either
   remove it or reduce it to archiving *volatile remote URLs* that may vanish.
   Tracked as a todo. (P6) — see Addendum D.
+- **D12 — Catalog scope is the set of enabled `file_types`; a card is a file
+  type.** kbi indexes a file only if its extension belongs to an *enabled* file
+  type, and `*.kb.md` cards are their own type (`CardHandler`, keyed on the
+  compound `.kb.md` extension and winning precedence over `.md`). So one engine
+  serves two profiles by configuration alone: a **card-only catalog** (enable
+  only `card` → distilled, cross-repo) and a **deep within-repo index** (enable
+  `card` + `markdown` + … → full content, local output). An explicit `file_types`
+  **replaces** the defaults rather than merging, so scope can actually be
+  narrowed. (P9, D2) — see Addendum F. *(Implemented in increment A.)*
 
 ## 5. Card Schema (current)
 
@@ -289,10 +298,18 @@ catalog writes.
 ## 7. Implications for kbi (future PRD extensions)
 
 The decisions lean harder on the indexer than today's implementation. All are
-*additive* to the existing one-model architecture (P9):
+*additive* to the existing one-model architecture (P9).
 
-- Parse **YAML frontmatter `tags`** (not only inline tags).
-- Include `**/.kb/**/*.md` so cards are discovered despite the dot-directory.
+Done (increment A):
+
+- Discover cards inside `.kb/` — kbi already uses `os.walk`, which descends into
+  hidden directories, so the feared dot-directory glob change was unnecessary.
+- Parse **YAML frontmatter `tags`** — already supported by the markdown handler;
+  the `CardHandler` now labels them by the card **title** instead of the filename.
+- `CardHandler` + card scoping via enabled `file_types` (see D12).
+
+Pending (increment B and beyond):
+
 - Add a **markdown renderer** (Claude-facing index) alongside the `.mm` renderer.
 - Emit **per-domain index slices** at predictable paths.
 - Add a **`consolidate`** mode: aggregate tags/terms, propose synonym merges.
@@ -374,3 +391,17 @@ structure that must be kept consistent with the real tree on every move/rename. 
 per-directory `.kb/` inherits the real tree's structure for free and travels with
 its source. Hidden dotfiles are slightly easier to forget, but routine
 regeneration (kbi / roll-up) surfaces them, so the risk is low.
+
+### Addendum F — Scope as enabled file types; `file_types` replace semantics
+
+Increment A wiring surfaced two things. First, kbi discovers files with `os.walk`,
+which descends into hidden directories, so cards under `.kb/` are found with no
+glob change — the dot-directory worry was unfounded for this codebase. Second,
+the natural place to express *what gets indexed* is the set of enabled
+`file_types`: a card is its own type keyed on the compound `.kb.md` extension, so
+"distilled-only" vs "deep" is just which types a config turns on (D12). For that
+to work, an explicit `file_types` had to **replace** the defaults rather than
+merge into them — the prior merge behavior silently re-added the default
+`markdown`/`freeplane` types, making a card-only scope impossible. The trade-off
+is that any config specifying `file_types` must now list *every* type it wants;
+this is explicit and was already true of existing configs.
