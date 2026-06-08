@@ -10,6 +10,9 @@ A quick, example-driven getting-started guide. It is not exhaustive — see
 - **Build the catalog** with `kbi` (run separately). It reads cards read-only and
   writes per-domain *slices* that consumers read.
 
+The use cases below follow these two sides: first creating and maintaining cards,
+then building and using the catalog.
+
 One-time per area: create an area config so `/kb-card` knows the domain and how to
 distill. Everything else is optional overrides.
 
@@ -20,7 +23,12 @@ profile: reflective          # reflective = include key quotes; standard = none
 seed_tags: [faith, grace, discipleship]
 ```
 
-## Use case 1 — a small repo → one card
+## Part 1 — Creating and maintaining cards
+
+Author-side: run `/kb-card` inside the content repo; cards and `cards.yml` are
+committed there. Cases 1–4 choose the card granularity; case 5 keeps cards current.
+
+### Use case 1 — a small repo → one card
 
 For a small, single-topic repo, one card covers it.
 
@@ -32,7 +40,7 @@ cd ~/dev/some-small-repo
 
 Result: `./.kb/<name>.kb.md` (one card) and `./.kb/cards.yml`.
 
-## Use case 2 — a sprawling but organized repo → a card per item
+### Use case 2 — a sprawling but organized repo → a card per item
 
 When each subdirectory is one coherent item (e.g. BSFL: one lesson per folder),
 recurse and let each leaf get its own card.
@@ -46,7 +54,7 @@ cd ~/dev/BSFL
 Each lesson folder gets `<folder>/.kb/Plan.kb.md` + `cards.yml`. To target one
 lesson: `cd` into it and run `/kb-card`.
 
-## Use case 3 — a directory of files → one card per file
+### Use case 3 — a directory of files → one card per file
 
 When a directory holds many *distinct* documents (not variants of one thing), the
 natural unit is one card per file. `/kb-card` picks this adaptively; set
@@ -66,7 +74,7 @@ cd ~/dev/research/SDV-research/reports
 Each file gets `.kb/<stem>.kb.md`. A dense, multi-topic document can still split
 further — that's the next case.
 
-## Use case 4 — a dense report → split into several cards
+### Use case 4 — a dense report → split into several cards
 
 A long, multi-topic report should become several cards. Allow splitting in that
 subtree, then review the proposed split before authoring.
@@ -94,7 +102,26 @@ Want it deeper or shallower? Use the density dial (or a `-cards` ceiling):
 To go deeper on just one section, add a `density_overrides` entry to that
 directory's `cards.yml` during the `-plan` review.
 
-## Use case 5 — build the catalog and read it
+### Use case 5 — update when content changes
+
+Edit a source, then re-run `/kb-card` over the area; it **reconciles** against
+`cards.yml` and only acts on what changed:
+
+```bash
+/kb-card -r reports/          # refresh drifted cards, re-segment broken
+                              # boundaries, flag orphans, propose new sections
+```
+
+You never redo settled decisions — locked boundaries persist; only genuinely
+changed content is re-reviewed. (See `REFERENCE.md` §4.4 for the reconcile
+outcomes.) Regenerate the catalog afterward (Part 2).
+
+## Part 2 — Building and using the catalog
+
+Catalog-side: run `kbi` separately; it reads the `.kb.md` cards read-only and
+produces the catalog that consumers read.
+
+### Use case 6 — build the catalog and read it
 
 Write a catalog config that scopes to cards only (`card` file type) and uses the
 markdown renderer, then run `kbi`.
@@ -119,7 +146,7 @@ python3 kbi.py --config configs/catalog.yml
 Open a slice (e.g. `~/dev/kb/index/spiritual.md`) to see each card's title,
 essence, tags, `builds_on`, `defines`, and path — the index a consumer scans.
 
-### Or render a mind map instead
+#### Or render a mind map instead
 
 The same index model also renders to a Freeplane `.mm` mind map (the human
 navigation view). Switch `format` to `freeplane` and point `output.file` at a
@@ -154,7 +181,7 @@ file_types:
 This indexes every document (and parses cards card-aware), producing a full
 local navigation map of the repo.
 
-## Use case 6 — wire a consumer (e.g. a council member)
+### Use case 7 — wire a consumer (e.g. a council member)
 
 The retrieval protocol is shared once; each member just declares its slice.
 
@@ -175,21 +202,6 @@ shared retrieval protocol.
 
 A member-only session picks up the shared protocol automatically (CLAUDE.md loads
 up the directory tree).
-
-## Use case 7 — update when content changes
-
-Edit a source, then re-run `/kb-card` over the area; it **reconciles** against
-`cards.yml` and only acts on what changed:
-
-```bash
-/kb-card -r reports/          # refresh drifted cards, re-segment broken
-                              # boundaries, flag orphans, propose new sections
-python3 ~/dev/kbi/kbi.py --config configs/catalog.yml   # regenerate slices
-```
-
-You never redo settled decisions — locked boundaries persist; only genuinely
-changed content is re-reviewed. (See `REFERENCE.md` §4.4 for the reconcile
-outcomes.)
 
 ## Cheat sheet
 
