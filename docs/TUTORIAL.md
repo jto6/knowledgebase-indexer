@@ -99,6 +99,41 @@ python3 kbi.py --config configs/catalog.yml
 Open a slice (e.g. `~/dev/kb/index/spiritual.md`) to see each card's title,
 essence, tags, `builds_on`, `defines`, and path — the index a consumer scans.
 
+### Or render a mind map instead
+
+The same index model also renders to a Freeplane `.mm` mind map (the human
+navigation view). Switch `format` to `freeplane` and point `output.file` at a
+`.mm` file — same card-only scope:
+
+```yaml
+output: { file: "/home/jon/dev/kb/catalog.mm", format: "freeplane" }
+file_types:
+  card: { extensions: [".kb.md"], handler: "CardHandler" }
+```
+
+```bash
+python3 kbi.py --config configs/catalog-mm.yml      # → /home/jon/dev/kb/catalog.mm
+```
+
+Open `catalog.mm` in Freeplane to browse the File System, Tag, and Word index
+branches over your cards.
+
+To deep-index **one repo's full content** (not just cards — the original kbi
+use), scope to that repo and enable all file types:
+
+```yaml
+directories: { include: ["/home/jon/dev/research/SDV-research"] }
+keywords: { files: [] }
+output: { file: "/home/jon/dev/research/SDV-research/index.mm", format: "freeplane" }
+file_types:
+  card:      { extensions: [".kb.md"],          handler: "CardHandler" }
+  markdown:  { extensions: [".md", ".markdown"], handler: "MarkdownHandler" }
+  freeplane: { extensions: [".mm"],             handler: "FreeplaneHandler" }
+```
+
+This indexes every document (and parses cards card-aware), producing a full
+local navigation map of the repo.
+
 ## Use case 5 — wire a consumer (e.g. a council member)
 
 The retrieval protocol is shared once; each member just declares its slice.
