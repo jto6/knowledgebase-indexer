@@ -7,6 +7,7 @@
 directories:
   include:
     - "/home/jon/dev/BSFL"
+    - "/home/jon/dev/research/SDV-research"
   exclude:
     - "**/.git/**"
     - "**/__pycache__/**"
