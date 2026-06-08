@@ -13,8 +13,11 @@ A quick, example-driven getting-started guide. It is not exhaustive — see
 This guide follows those two sides: first creating and maintaining cards, then
 building and using the catalog.
 
-One-time per area: create an area config so `/kb-card` knows the domain and how to
-distill. Everything else is optional overrides.
+Each area has a small config (`kb.yml`) telling `/kb-card` the domain and how to
+distill. You don't have to create it yourself — on the first run in a new area,
+`/kb-card` creates `.kb/` and asks a couple of questions to write a default one
+(or pass `-domain` to skip the prompt). You can also author it directly;
+everything beyond `domain` is an optional override:
 
 ```yaml
 # <area-root>/.kb/kb.yml

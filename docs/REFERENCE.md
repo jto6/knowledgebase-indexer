@@ -155,7 +155,9 @@ meta:
 ## 2. Area Config — `kb.yml`
 
 One per knowledge-base area, at `<area>/.kb/kb.yml`. It declares policy for the
-whole subtree beneath it.
+whole subtree beneath it. You need not create it by hand: on first run, if no
+`kb.yml` is found, `/kb-card` auto-creates the `.kb/` directory and bootstraps a
+default `kb.yml` (asking a few questions, or using `-domain` if given).
 
 **Inheritance:** the effective config for a directory is resolved by walking up
 to the nearest ancestor `.kb/kb.yml`, merged **per key, nearest-ancestor-wins**.
@@ -322,7 +324,8 @@ All three are *optional overrides* of the adaptive proposal; omit them to let
 
 ### 4.3 Pipeline
 
-1. Resolve scope + area config (`kb.yml`) and the effective profile/density.
+1. Resolve scope + area config (`kb.yml`) and the effective profile/density. On
+   first run, auto-create `.kb/` and bootstrap a default `kb.yml` if none is found.
 2. **Segment:** propose boundaries (adaptive, honoring overrides), reconcile
    against `cards.yml`, present the delta for review, write `cards.yml`. (`-plan`
    stops here.)

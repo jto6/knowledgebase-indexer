@@ -230,6 +230,12 @@ one per area (e.g. `/home/jon/dev/BSFL/.kb/kb.yml`), but a sub-level may overrid
 if ever needed. It is deliberately minimal (P6): only `domain` is required, and
 everything else is defaulted or omitted.
 
+It need not be authored by hand. On first run in an area with no `kb.yml`,
+`/kb-card` auto-creates the `.kb/` directory and **bootstraps** a default `kb.yml`
+— using `-domain` if given, otherwise asking a few short questions (domain, quotes
+on/off, optional seed tags) and confirming where to root the area. First use is
+therefore zero-setup; the persisted `kb.yml` means later runs don't re-ask.
+
 ### 6.1 Fields
 
 - `domain` (required, string) — the area's domain. Also serves as the area's key
