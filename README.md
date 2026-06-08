@@ -1,6 +1,6 @@
 # Knowledgebase Indexer
 
-A Python implementation of the Knowledgebase Indexer that builds navigational indexes over collections of structured files. It computes a render-independent index model and emits it through renderers — Freeplane `.mm` mind maps today, with a Markdown (Claude-facing) renderer planned. See `docs/kbi_PRD.md`.
+A Python implementation of the Knowledgebase Indexer that builds navigational indexes over collections of structured files. It computes a render-independent index model and emits it through renderers — Freeplane `.mm` mind maps and Markdown (Claude-facing) per-domain slices. See the documentation below.
 
 ## Features
 
@@ -8,7 +8,14 @@ A Python implementation of the Knowledgebase Indexer that builds navigational in
 - **Keyword Index**: Context-sensitive search with hierarchical scope narrowing
 - **Tag Index**: Tag-based file organization
 - **Extensible Architecture**: Plugin-based file handlers
-- **Pluggable Renderers**: Freeplane `.mm` mind maps today; a Markdown (Claude-facing) renderer is planned
+- **Pluggable Renderers**: Freeplane `.mm` mind maps and Markdown (Claude-facing) per-domain slices
+
+## Documentation
+
+- `docs/TUTORIAL.md` — getting-started, example-driven walkthrough of each use case
+- `docs/REFERENCE.md` — full reference: meta-file schemas (card / `kb.yml` / `cards.yml`), the `/kb-card` command, and the catalog config
+- `docs/DESIGN_PRINCIPLES_AND_DECISIONS.md` — architecture, principles, and the rationale behind the decisions
+- `docs/kbi_PRD.md` — the indexer engine requirements
 
 ## Installation
 
