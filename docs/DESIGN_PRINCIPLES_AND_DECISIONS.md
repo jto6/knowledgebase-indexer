@@ -159,9 +159,11 @@ Each decision records the choice and why; supersessions are noted in the addenda
   be one cohesive, self-contained, bounded topic — the unit at which distillation
   stays faithful and retrieval stays precise. Granularity is a *cut* across the
   source hierarchy (repo → directory → file → section); `/kb-card` *proposes* the
-  cut by content analysis, and the optional `card_unit` / `card_split` keys in
-  `kb.yml` (inherited per subtree) override the proposal where the author wants
-  control. Reviewed boundaries are recorded in a per-directory `.kb/cards.yml`
+  cut by content analysis, and the optional `card_unit` / `card_split` /
+  `card_density` keys in `kb.yml` (inherited per subtree) override the proposal
+  where the author wants control, including how *deep* to partition (a `-cards N`
+  ceiling never invents topics to fill a quota), with non-uniform per-section depth
+  recorded in `cards.yml`. Reviewed boundaries are recorded in a per-directory `.kb/cards.yml`
   manifest (the realized record, not a forward plan); re-runs **reconcile**
   against it — refreshing drifted content, escalating boundaries that no longer
   resolve, and flagging orphans — so decisions are refined, never redone.
@@ -240,6 +242,9 @@ everything else is defaulted or omitted.
 - `card_split` (optional: `auto` | `never`) — whether `/kb-card` may split an
   over-dense unit into finer section cards (see §6.4). Omit to let `/kb-card`
   decide adaptively.
+- `card_density` (optional: `coarse` | `normal` | `fine` | `exhaustive`, default
+  `normal`) — how *deep* a split goes: how far down the source's section/subsection
+  hierarchy the cuts fall (see §6.4).
 
 ### 6.2 Profiles and resolution
 
@@ -342,6 +347,22 @@ where content is denser. Two controls set it:
   subtree, nearest-ancestor-wins) override the adaptive choice. This expresses
   heterogeneity directly: e.g. `sdv-research/.kb/kb.yml` → `card_unit: file`, with
   `sdv-research/reports/.kb/kb.yml` → `card_split: auto`.
+- *Depth (density).* `card_density` (`coarse|normal|fine|exhaustive`) controls how
+  far down the hierarchy the cuts go — for one report, the difference between ~2,
+  ~4, ~8, or ~16 cards (themes → section groups → sections → subsections). Set it
+  as a `kb.yml` default, per-run via `/kb-card -density fine`, or cap the count
+  with `/kb-card -cards N`. **`-cards N` is a ceiling, not a quota**: partitioning
+  stops at the finest *meaningful* boundaries and never invents or fragments topics
+  to reach N (if a depth would exceed N, the least-distinct boundaries are merged).
+  Density expresses willingness to spend cards; cohesion is still the floor — it
+  cannot manufacture distinctions the content lacks.
+
+Depth can be **non-uniform**: a `density_overrides` entry in `cards.yml` raises (or
+lowers) the density for one `(source, section)` scope while the rest of the
+directory keeps the global `density`. The override is a durable *directive* (intent),
+distinct from the realized card list (result): on re-run the proposer applies the
+override to existing *and new* content in that scope, and the global density
+everywhere else — so "go deeper here" survives and propagates correctly.
 
 Adaptive is strong at finding seams but weak at marginal cohesion calls and at
 cross-run consistency, so it *proposes*; the human *reviews* (initially); and the
@@ -357,6 +378,11 @@ single file:
 # .kb/cards.yml — reviewed segmentation manifest for this directory.
 version: 1
 updated: 2026-06-07
+density: normal                  # effective depth for this directory (from kb.yml/-run)
+density_overrides:               # optional: non-uniform depth, by (source, section)
+  - source: ../reports/foo.pdf
+    section: "Architecture"
+    density: fine
 cards:
   - slug: sdv-arch-overview
     id: 7f3a...                  # stable card id
