@@ -54,6 +54,24 @@ Both invocations are the same in form; the difference in output comes entirely
 from the material. To preview what the tool intends *before* it writes anything,
 run with `-plan` first (see Overrides).
 
+### Capture a talk from a URL (e.g. a sermon)
+
+A remote source (a YouTube sermon) has no local home, so `/kb-card` captures it
+first: it downloads the **transcript**, writes it as a visible local file, and
+distills a card whose `source` links back to the video.
+
+```bash
+cd ~/dev/sermons          # an area with its own .kb/kb.yml (e.g. domain: spiritual)
+/kb-card https://www.youtube.com/watch?v=XXXXXXXX
+```
+
+Result: a visible transcript `sermons/<slug>.md` (the browsable, re-segmentable
+source) and a card `sermons/.kb/<slug>.kb.md` whose `source` lists the YouTube URL
+(to watch later) plus the local transcript. The video file itself is never kept.
+
+Transcript-only is the default and is right for spoken-word talks; a richer
+`-visual` capture for slide-heavy videos is planned but not yet available.
+
 ### Overriding the adaptive choice
 
 When you want a result the tool would not pick on its own, declare it in the

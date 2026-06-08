@@ -81,6 +81,18 @@ class TestSliceRendering:
         MarkdownSliceRenderer(str(tmp_path)).render(records)
         assert (tmp_path / "uncategorized.md").exists()
 
+    def test_list_source_renders_all_entries(self, tmp_path):
+        """A captured remote source has a list `source` (URL + local transcript);
+        the slice must render every entry."""
+        records = [{
+            "slug": "sermon", "title": "A Sermon", "domain": "spiritual",
+            "essence": "e", "tags": ["grace"], "file_path": "/s/.kb/sermon.kb.md",
+            "source": ["https://youtu.be/XYZ", "../sermon.md"],
+        }]
+        MarkdownSliceRenderer(str(tmp_path)).render(records)
+        slice_text = (tmp_path / "spiritual.md").read_text()
+        assert "source: https://youtu.be/XYZ, ../sermon.md" in slice_text
+
 
 @pytest.mark.quick
 class TestNormalization:

@@ -51,7 +51,8 @@ Required:
 - `title` — human-readable title (also the card's H1).
 - `source` — path **relative to the card's `.kb/` directory** to the origin: a
   file (`../Plan.md`), a directory (`..`), a URL, or a list of these. The
-  "dig deeper" link.
+  "dig deeper" link. For a remote source, list the URL first (canonical) and the
+  local capture second (the analyzable basis) — see §1.6.
 - `domain` — the subject domain; routes the card to a slice and selects the
   area profile.
 - `tags` — bottom-up content tags (kebab-case). Reused across cards to form the
@@ -68,7 +69,8 @@ Optional:
 - `created` / `updated` — ISO dates. `updated` vs the source date flags staleness.
 - `source_hash` — `sha256:<hex>`; change-detection for regeneration.
 - `meta` — open map for domain-specific keys (e.g. `scripture`, `section`,
-  `cve`), so the core schema stays universal.
+  `cve`; and `capture` for remote sources — see §1.6), so the core schema stays
+  universal.
 
 ### 1.3 Body
 
@@ -116,6 +118,38 @@ meta:
 
 - on faith
 	- "What we call interruptions, God calls invitations."
+```
+
+### 1.6 Remote sources and capture
+
+A card cannot be co-located with a remote source (a URL has no local home). The
+authoring step (`/kb-card <url>`) fetches a **transcript** and writes it as a
+*visible* local source document in the directory (browsable and re-segmentable);
+the card sidecars it in `.kb/`. Conventions:
+
+- `source` is a list: the **URL first** (canonical "dig deeper") and the **local
+  capture** second (the analyzable basis used for `-resegment` and drift).
+- `meta.capture` records the capture method/fidelity: `transcript` (default) or
+  `transcript+visual` (planned).
+- Filename: a URL has no source stem, so the card and capture are named from the
+  slug (e.g. a date-prefixed slug).
+
+The local capture is the *operational* source of truth (what tools read); the URL
+is the *canonical* original (human fallback). **Visual/multimodal capture**
+(`-visual`, producing `transcript+visual` = spoken text + OCR'd on-screen text +
+short visual descriptions) is **planned, not yet implemented**; transcript-only is
+the default, with a heuristic warning when a transcript references on-screen
+visuals. See `DESIGN_PRINCIPLES_AND_DECISIONS.md` (D15 / Addendum G).
+
+```yaml
+# a captured talk
+source:
+  - https://www.youtube.com/watch?v=XXXXXXXX     # canonical — watch it
+  - ../2026-06-08-grace-that-interrupts.md       # local transcript — analyzable basis
+meta:
+  capture: transcript
+  speaker: "..."
+  preached: 2026-06-08
 ```
 
 ## 2. Area Config — `kb.yml`
@@ -256,7 +290,9 @@ Creates/updates cards and reconciles `cards.yml`. Granularity is **adaptive-firs
          [-domain <d>] [-level 1|2|3] [-quotes | -no-quotes]
 ```
 
-- `source` — file, directory, or omitted (current directory).
+- `source` — file, directory, URL, or omitted (current directory). A URL is
+  captured to a local transcript first (see §1.6); `-visual` (planned) is rejected
+  until implemented.
 - `-r` — recurse: author a card per unit across the tree.
 - `-plan` — propose/update `cards.yml` and **stop before authoring** — the
   review/adjustment gate.

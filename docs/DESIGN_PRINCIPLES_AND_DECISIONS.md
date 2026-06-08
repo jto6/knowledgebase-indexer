@@ -168,6 +168,22 @@ Each decision records the choice and why; supersessions are noted in the addenda
   against it — refreshing drifted content, escalating boundaries that no longer
   resolve, and flagging orphans — so decisions are refined, never redone.
   (P3, P4) — see §6.4.
+- **D15 — Remote/URL sources are handled by capturing a local text artifact that
+  becomes the *operational* source of truth.** A card cannot be co-located with a
+  remote source (a YouTube URL has no local home), so `/kb-card <url>` fetches a
+  **transcript** (via `/distill`), writes it as a *visible* local source document
+  — the directory's content, browsable and re-segmentable, the same role a
+  lesson's `Plan.md` plays — and distills the card from it. The card's `source`
+  lists the **URL first** (canonical "dig deeper") and the local capture second
+  (the analyzable basis for `-resegment` / drift). Two tiers of truth: the local
+  capture is the *operational* source of truth (what every automated step reads);
+  the URL is the *canonical* original (human/Claude fallback). Fidelity is
+  recorded in `meta.capture` (e.g. `transcript`). Visual/multimodal capture
+  (`transcript+visual`) is **opt-in and deferred** — expensive, requires the
+  video, and only enriches the same local text artifact, so it needs no
+  architectural change; a cheap transcript-reference heuristic warns when a
+  transcript-only capture is likely lossy. (P1, P3, P5) — see Addendum G; this
+  also absorbs the residual `/kb-import` role (D11, Addendum D).
 
 ## 5. Card Schema (current)
 
@@ -178,7 +194,8 @@ Frontmatter:
 - `title` (required) — human label.
 - `source` (required) — file, directory, URL, or a list of these; defaults to
   `..` (the directory the `.kb/` sits in) when the card summarizes the whole
-  folder. The "dig deeper" follow-link.
+  folder. The "dig deeper" follow-link. For a remote source, list the URL first
+  (canonical) and the local capture second (the analyzable basis) — see D15.
 - `domain` (required) — routes to a consumer slice and selects the profile.
 - `tags` (required) — bottom-up, reconciled content taxonomy.
 - `builds_on` (optional) — list of card ids/slugs (prerequisite links).
@@ -189,7 +206,8 @@ Frontmatter:
 - `source_hash` (optional) — change detection for regeneration (manifest hash for
   directory sources).
 - `meta` (optional) — open map for domain-specific keys (e.g. `scripture`,
-  `ticker`, `cve`) so the core schema stays universal.
+  `ticker`, `cve`; and `capture` for remote sources — the capture method/fidelity,
+  see D15) so the core schema stays universal.
 
 Body:
 
@@ -535,3 +553,35 @@ merge into them — the prior merge behavior silently re-added the default
 `markdown`/`freeplane` types, making a card-only scope impossible. The trade-off
 is that any config specifying `file_types` must now list *every* type it wants;
 this is explicit and was already true of existing configs.
+
+### Addendum G — Capturing remote sources (URLs); transcript as source of truth
+
+A common use is "summarize a YouTube sermon/talk and add it to the KB." The card
+schema already allows a URL `source`, but a card cannot be *co-located* with a
+remote source, and an early idea — hiding the fetched transcript inside `.kb/` —
+left the directory visibly empty and gave `-resegment` nothing local to act on.
+The resolution: treat the fetched **transcript as the visible local source
+document** (the sermon's `Plan.md`), so the directory is a normal "directory of
+documents," browsable and re-segmentable, with the card sidecar in `.kb/`.
+
+Capture is a *lossy, sticky projection* of the video onto text: once captured,
+every automated step (distill, reconcile, drift via `source_hash`) reads the
+transcript, not the video. This is correct for spoken-word content (the transcript
+is ~the whole message) and is made honest by two devices: the URL is always
+retained in `source` as the canonical original (the real fallback), and
+`meta.capture` records the fidelity. So there are two tiers — the local capture is
+the *operational* source of truth; the URL/video is the *canonical* one.
+
+Visual richness cannot be detected cheaply (knowing requires looking at the video,
+~as costly as processing it), so the system never auto-decides: default is
+transcript-only, and a cheap scan of the transcript for visual-reference phrases
+("as you can see on this slide…") *warns* when transcript-only is likely lossy.
+Higher-fidelity **visual/multimodal capture** (`transcript+visual` = spoken text +
+OCR'd on-screen text + short visual descriptions) is **opt-in (`-visual`) and
+documented-but-deferred**. Crucially it changes nothing architecturally — it only
+produces a richer *local text* capture, so distill/reconcile are unaffected and
+the implementation can be slotted in later. Keeping the capture visible and
+editable is also a feature: messy auto-transcripts can be cleaned, then re-distilled.
+
+This capture role is the residual purpose previously earmarked for `/kb-import`
+(Addendum D), now folded into `/kb-card`, so `/kb-import` can be retired.
