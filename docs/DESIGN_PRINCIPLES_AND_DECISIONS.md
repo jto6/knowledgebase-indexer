@@ -154,6 +154,18 @@ Each decision records the choice and why; supersessions are noted in the addenda
   directory tree, a member-only session still inherits the shared protocol.
   (P2, P7, D9) *(Implemented when wiring the pastor; resolves the §8 slice-home
   question.)*
+- **D14 — Card granularity is adaptive-first with declarative override, and the
+  boundary decisions are persisted per directory in `cards.yml`.** A card should
+  be one cohesive, self-contained, bounded topic — the unit at which distillation
+  stays faithful and retrieval stays precise. Granularity is a *cut* across the
+  source hierarchy (repo → directory → file → section); `/kb-card` *proposes* the
+  cut by content analysis, and the optional `card_unit` / `card_split` keys in
+  `kb.yml` (inherited per subtree) override the proposal where the author wants
+  control. Reviewed boundaries are recorded in a per-directory `.kb/cards.yml`
+  manifest (the realized record, not a forward plan); re-runs **reconcile**
+  against it — refreshing drifted content, escalating boundaries that no longer
+  resolve, and flagging orphans — so decisions are refined, never redone.
+  (P3, P4) — see §6.4.
 
 ## 5. Card Schema (current)
 
@@ -222,6 +234,12 @@ everything else is defaulted or omitted.
   to. Drives the subscription wiring (D9): tooling can generate this area's
   `CLAUDE.md` KB-access stanza, and the catalog renders the dependency as a
   cross-domain edge.
+- `card_unit` (optional: `repo` | `directory` | `file` | `section`) — overrides
+  the adaptive card-granularity choice for this subtree (see §6.4). Omit to let
+  `/kb-card` choose adaptively.
+- `card_split` (optional: `auto` | `never`) — whether `/kb-card` may split an
+  over-dense unit into finer section cards (see §6.4). Omit to let `/kb-card`
+  decide adaptively.
 
 ### 6.2 Profiles and resolution
 
@@ -304,6 +322,82 @@ a catalog/engine concern declared in the central kbi config, not in `kb.yml`,
 keeping the area config focused on what the area *is* rather than where the
 catalog writes.
 
+### 6.4 Card Granularity and the `cards.yml` Manifest
+
+**Sizing principle.** One card = one cohesive, self-contained, bounded topic — the
+unit at which distillation stays faithful (acceptable information loss) and
+retrieval stays precise. Too coarse loses detail (one card for a directory of
+distinct reports); too fine fragments.
+
+**Granularity is a cut across the source hierarchy** (`repo → directory → file →
+section`). How big a card is = how deep the cut goes, and the cut may go deeper
+where content is denser. Two controls set it:
+
+- *Adaptive proposal (default).* `/kb-card` content-analyzes the sources and
+  proposes the cut — detecting natural seams (sections, distinct files) and the
+  "one thing vs. many things" distinction (a BSFL lesson folder is variants of one
+  lesson → one card; a `reports/` folder is many distinct documents → one card
+  each, splitting a dense report into per-section cards).
+- *Declarative override.* `card_unit` / `card_split` in `kb.yml` (inherited per
+  subtree, nearest-ancestor-wins) override the adaptive choice. This expresses
+  heterogeneity directly: e.g. `sdv-research/.kb/kb.yml` → `card_unit: file`, with
+  `sdv-research/reports/.kb/kb.yml` → `card_split: auto`.
+
+Adaptive is strong at finding seams but weak at marginal cohesion calls and at
+cross-run consistency, so it *proposes*; the human *reviews* (initially); and the
+decision is *persisted* — which is what neutralizes the consistency weakness.
+
+**The `cards.yml` manifest.** Each directory's `.kb/cards.yml` records the reviewed
+result — how that directory's sources are divided into cards. It is the record of
+boundary *decisions*, not the card content (which is regenerated). One manifest per
+directory, covering every source in it, including multiple cards carved from a
+single file:
+
+```yaml
+# .kb/cards.yml — reviewed segmentation manifest for this directory.
+version: 1
+updated: 2026-06-07
+cards:
+  - slug: sdv-arch-overview
+    id: 7f3a...                  # stable card id
+    file: foo.architecture.kb.md
+    source: ../reports/foo.pdf   # relative to this .kb/
+    scope:                       # omit for whole-file / whole-directory cards
+      section: "Architecture"
+      signature: "<short topic fingerprint>"   # semantic anchor, not page numbers
+    title: SDV Architecture Overview
+    locked: true                 # human-ratified boundary
+    source_hash: sha256:...
+```
+
+`kb.yml` holds area *policy* (inherited); `cards.yml` holds the *realized*
+boundaries for one directory (local, concrete).
+
+**Boundaries vs. content.** Boundaries are sticky (in `cards.yml`, human-
+controlled); content is regenerated from source. Updating a source refreshes the
+card's content but preserves the boundary.
+
+**Reconcile on re-run (refine, don't redo).** `/kb-card -r` re-analyzes, diffs
+against `cards.yml`, and surfaces only the delta:
+
+- source unchanged (hash match) → keep the card as-is;
+- source changed, boundary still resolves (validated *semantically* against the
+  card's section/signature, not by page number) → refresh content, keep boundary;
+- source changed, boundary no longer resolves → break the lock and escalate that
+  source to re-segmentation review (`locked` protects against *silent* change, not
+  against escalation when content drift invalidates the boundary);
+- source gone → flag the card as an orphan for retire/delete.
+
+A manual `/kb-card -resegment <source>` forces a fresh segmentation of one source
+when the author already knows the content changed dramatically. The invariant:
+decisions are honored while they remain meaningful; when the ground shifts under a
+specific source, only that source is re-decided — never the whole tree, never
+silently. The `scope` anchor is therefore semantic (section identity + a topic
+signature) with page ranges as a derived hint, so "is this boundary still valid?"
+is reliably answerable.
+
+`cards.yml` is author-side; kbi indexes only `*.kb.md` cards and ignores it.
+
 ## 7. Implications for kbi (future PRD extensions)
 
 The decisions lean harder on the indexer than today's implementation. All are
@@ -333,8 +427,6 @@ Pending (increment C and beyond):
 
 ## 8. Open Questions
 
-- Whether card authoring is a new `/kb-card` command (distill + frontmatter +
-  link reconciliation) or distill + convention.
 - Details of the `rename` tooling and slug-redirect handling.
 - When (if) to introduce deep sub-anchor links `[[id#term]]`.
 
