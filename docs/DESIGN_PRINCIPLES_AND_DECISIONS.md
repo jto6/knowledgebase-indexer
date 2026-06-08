@@ -132,10 +132,10 @@ Each decision records the choice and why; supersessions are noted in the addenda
   is high-signal enough to be the default. No vector store unless a recall gap is
   measured; if added, it embeds the *cards* (and optionally sources), runs
   locally, and sits on top of the card layer. (P3, P5) — see Addendum A.
-- **D11 — `/kb-import` is deprecated to a narrow role.** Built around old Claude
-  Code limits, now largely superseded by cards + native source reading. Either
-  remove it or reduce it to archiving *volatile remote URLs* that may vanish.
-  Tracked as a todo. (P6) — see Addendum D.
+- **D11 — `/kb-import` is retired.** Built around old Claude Code limits, it was
+  superseded by cards + native source reading; its one residual role (archiving
+  volatile remote URLs) is now fulfilled by `/kb-card`'s URL capture (D15). The
+  command has been removed. (P6) — see Addenda D and G.
 - **D12 — Catalog scope is the set of enabled `file_types`; a card is a file
   type.** kbi indexes a file only if its extension belongs to an *enabled* file
   type, and `*.kb.md` cards are their own type (`CardHandler`, keyed on the
@@ -530,7 +530,9 @@ readability for frontmatter cross-refs. Best of both: UUID anchor + slug surface
 cover almost all of its use. It should be removed or reduced to a single narrow
 job — archiving volatile remote URLs that may change or disappear (the one thing a
 `source:` link cannot guarantee). The only salvageable idea is `source_hash` for
-staleness detection, now folded into the card schema. Tracked as a todo (D11, P6).
+staleness detection, now folded into the card schema. Now **retired**: that
+residual archiving role is fulfilled by `/kb-card`'s URL capture (D15,
+Addendum G), so the command and its `.kbmap` have been removed (D11, P6).
 
 ### Addendum E — Per-directory `.kb/` vs. top-level mirror
 
