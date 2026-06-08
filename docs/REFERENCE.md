@@ -146,8 +146,11 @@ Optional:
   vocabulary convergent).
 - `meta_fields` — domain-specific frontmatter keys cards should carry (e.g.
   `scripture`), so authoring extracts them into `meta`.
-- `card_unit` — granularity anchor: `repo | directory | file | section` (see §4).
-- `card_split` — whether to split an over-dense unit: `auto | never` (see §4).
+- `card_unit` — granularity anchor: `repo | directory | file | section` (default:
+  adaptive — the tool picks the unit from the content; see §4).
+- `card_split` — whether to split an over-dense unit: `auto | never` (default:
+  adaptive, which behaves like `auto` — a genuinely over-dense unit is split; set
+  `never` to suppress splitting and force one card per unit). See §4.
 - `card_density` — how deep to split: `coarse | normal | fine | exhaustive`,
   default `normal` (see §4).
 - `draws_on` — list of upstream domains this area subscribes to (drives consumer
@@ -268,7 +271,10 @@ Creates/updates cards and reconciles `cards.yml`. Granularity is **adaptive-firs
 ### 4.2 Granularity model (three dials)
 
 - `card_unit` — *where* cuts can fall: `repo | directory | file | section`.
-- `card_split` — *whether* to split a unit: `auto | never`.
+  Default is adaptive (the tool picks).
+- `card_split` — *whether* to split a unit: `auto | never`. Default is adaptive
+  (≈ `auto`); `never` forces one card per unit even when it is dense. Setting
+  `auto` only makes the default behavior explicit.
 - `card_density` — *how deep* to split: `coarse | normal | fine | exhaustive`. For
   one report this is roughly the difference between ~2 / ~4 / ~8 / ~16 cards
   (themes → section groups → sections → subsections). Density expresses

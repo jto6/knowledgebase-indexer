@@ -10,8 +10,8 @@ A quick, example-driven getting-started guide. It is not exhaustive — see
 - **Build the catalog** with `kbi` (run separately). It reads cards read-only and
   writes per-domain *slices* that consumers read.
 
-The use cases below follow these two sides: first creating and maintaining cards,
-then building and using the catalog.
+This guide follows those two sides: first creating and maintaining cards, then
+building and using the catalog.
 
 One-time per area: create an area config so `/kb-card` knows the domain and how to
 distill. Everything else is optional overrides.
@@ -26,83 +26,65 @@ seed_tags: [faith, grace, discipleship]
 ## Part 1 — Creating and maintaining cards
 
 Author-side: run `/kb-card` inside the content repo; cards and `cards.yml` are
-committed there. Cases 1–4 choose the card granularity; case 5 keeps cards current.
+committed there.
 
-### Use case 1 — a small repo → one card
+### Authoring is one command — the tool adapts to the content
 
-For a small, single-topic repo, one card covers it.
+You run the same command every time — `/kb-card` for the current item, or
+`/kb-card -r <area>` to walk a tree. You do **not** pick a granularity mode; the
+tool reads the content and decides how many cards it warrants. Identical commands
+produce different results purely from *what is being indexed*:
 
-```bash
-cd ~/dev/some-small-repo
-# (create .kb/kb.yml with a domain, e.g. domain: technical)
-/kb-card                     # source defaults to the current directory
-```
-
-Result: `./.kb/<name>.kb.md` (one card) and `./.kb/cards.yml`.
-
-### Use case 2 — a sprawling but organized repo → a card per item
-
-When each subdirectory is one coherent item (e.g. BSFL: one lesson per folder),
-recurse and let each leaf get its own card.
+| Content being indexed                                             | What the tool produces          |
+|-------------------------------------------------------------------|---------------------------------|
+| a small, single-topic repo                                        | one card for the whole repo     |
+| subdirectories each a cohesive item (BSFL: one lesson per folder) | one card per directory          |
+| a directory of distinct documents                                 | one card per file               |
+| a dense, multi-topic document                                     | several cards, split by section |
 
 ```bash
 cd ~/dev/BSFL
-# area .kb/kb.yml: domain: spiritual, profile: reflective
-/kb-card -r "Fall 2025"      # walk the tree; one card per lesson folder
+/kb-card -r "Fall 2025"      # one card per lesson — each folder is one lesson
+
+cd ~/dev/research/SDV-research/reports
+/kb-card -r .                # one card per report, and the dense ones split further
 ```
 
-Each lesson folder gets `<folder>/.kb/Plan.kb.md` + `cards.yml`. To target one
-lesson: `cd` into it and run `/kb-card`.
+Both invocations are the same in form; the difference in output comes entirely
+from the material. To preview what the tool intends *before* it writes anything,
+run with `-plan` first (see Overrides).
 
-### Use case 3 — a directory of files → one card per file
+### Overriding the adaptive choice
 
-When a directory holds many *distinct* documents (not variants of one thing), the
-natural unit is one card per file. `/kb-card` picks this adaptively; set
-`card_unit: file` to pin it.
+When you want a result the tool would not pick on its own, declare it in the
+area's `kb.yml` (applies to the subtree) or pass a flag:
+
+- **Force the unit** — `card_unit: file` pins one card per file (or `directory` /
+  `repo` to go coarser) instead of letting the tool decide.
+- **Forbid splitting** — `card_split: never` keeps a dense, multi-topic file as a
+  single card (the adaptive default would split it). `auto` just states the
+  default explicitly.
+- **Set the depth** — `card_density: coarse|normal|fine|exhaustive`, or per run
+  `-density fine`; cap with `-cards N` (a **maximum**, never a quota — it will not
+  invent topics to reach N).
+- **Review before authoring** — `-plan` proposes the segmentation into `cards.yml`
+  and stops. Edit it (merge / split / relabel, or add a `density_overrides` entry
+  to go deeper on one section), then run without `-plan` to author.
 
 ```yaml
-# <area-root>/.kb/kb.yml
-domain: sdv-research
-card_unit: file
+# reports/.kb/kb.yml — force outcomes the adaptive default wouldn't choose
+card_split: never        # one card per report, even the dense multi-topic ones
+# card_unit: file        # or: pin one card per file
+# card_density: fine     # or: when splitting, split deeper
 ```
 
 ```bash
-cd ~/dev/research/SDV-research/reports
-/kb-card -r .            # one card per document in this directory
+/kb-card -plan Hypervisor_Technologies.md          # propose the split; review cards.yml
+/kb-card -density fine Hypervisor_Technologies.md  # deeper: ~ one card per section
+/kb-card -cards 8 Hypervisor_Technologies.md       # at most 8 cards (never pads to 8)
 ```
 
-Each file gets `.kb/<stem>.kb.md`. A dense, multi-topic document can still split
-further — that's the next case.
-
-### Use case 4 — a dense report → split into several cards
-
-A long, multi-topic report should become several cards. Allow splitting in that
-subtree, then review the proposed split before authoring.
-
-```yaml
-# reports/.kb/kb.yml  (inherits domain/profile from the area root)
-card_split: auto
-```
-
-```bash
-cd ~/dev/research/SDV-research/reports
-/kb-card -plan Hypervisor_Technologies.md     # propose the split; STOP for review
-#   → writes cards.yml with the proposed sections; review/adjust it
-/kb-card Hypervisor_Technologies.md           # author the cards per cards.yml
-```
-
-Want it deeper or shallower? Use the density dial (or a `-cards` ceiling):
-
-```bash
-/kb-card -density fine Hypervisor_Technologies.md   # ~ one card per section
-/kb-card -cards 8 Hypervisor_Technologies.md        # at most 8 (never pads to 8)
-```
-
-`-cards N` is a **maximum**, not a target — it never invents topics to reach N.
-To go deeper on just one section, add a `density_overrides` entry to that
-directory's `cards.yml` during the `-plan` review.
-
-### Use case 5 — update when content changes
+### Maintaining cards as content changes
 
 Edit a source, then re-run `/kb-card` over the area; it **reconciles** against
 `cards.yml` and only acts on what changed:
@@ -121,7 +103,7 @@ outcomes.) Regenerate the catalog afterward (Part 2).
 Catalog-side: run `kbi` separately; it reads the `.kb.md` cards read-only and
 produces the catalog that consumers read.
 
-### Use case 6 — build the catalog and read it
+### Build the catalog and read it
 
 Write a catalog config that scopes to cards only (`card` file type) and uses the
 markdown renderer, then run `kbi`.
@@ -181,7 +163,7 @@ file_types:
 This indexes every document (and parses cards card-aware), producing a full
 local navigation map of the repo.
 
-### Use case 7 — wire a consumer (e.g. a council member)
+### Wire a consumer (e.g. a council member)
 
 The retrieval protocol is shared once; each member just declares its slice.
 
@@ -205,11 +187,12 @@ up the directory tree).
 
 ## Cheat sheet
 
-| Goal                          | Command                                      |
-|-------------------------------|----------------------------------------------|
-| One card for the current dir  | `/kb-card`                                   |
-| A card per item in a tree     | `/kb-card -r <root>`                         |
-| Propose a split, review first | `/kb-card -plan <file>`                      |
-| Split deeper / cap the count  | `/kb-card -density fine <file>` / `-cards N` |
-| Re-segment a changed source   | `/kb-card -resegment <file>`                 |
-| Build the catalog             | `python3 kbi.py --config <catalog.yml>`      |
+| Goal                         | Command                                      |
+|------------------------------|----------------------------------------------|
+| Author cards (tool adapts)   | `/kb-card` · `/kb-card -r <root>`            |
+| Preview before authoring     | `/kb-card -plan <file>`                      |
+| Force one card per file      | `card_unit: file` in `kb.yml`                |
+| Never split a dense file     | `card_split: never` in `kb.yml`              |
+| Split deeper / cap the count | `/kb-card -density fine <file>` / `-cards N` |
+| Re-segment a changed source  | `/kb-card -resegment <file>`                 |
+| Build the catalog            | `python3 kbi.py --config <catalog.yml>`      |
