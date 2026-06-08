@@ -46,7 +46,27 @@ cd ~/dev/BSFL
 Each lesson folder gets `<folder>/.kb/Plan.kb.md` + `cards.yml`. To target one
 lesson: `cd` into it and run `/kb-card`.
 
-## Use case 3 — a dense report → split into several cards
+## Use case 3 — a directory of files → one card per file
+
+When a directory holds many *distinct* documents (not variants of one thing), the
+natural unit is one card per file. `/kb-card` picks this adaptively; set
+`card_unit: file` to pin it.
+
+```yaml
+# <area-root>/.kb/kb.yml
+domain: sdv-research
+card_unit: file
+```
+
+```bash
+cd ~/dev/research/SDV-research/reports
+/kb-card -r .            # one card per document in this directory
+```
+
+Each file gets `.kb/<stem>.kb.md`. A dense, multi-topic document can still split
+further — that's the next case.
+
+## Use case 4 — a dense report → split into several cards
 
 A long, multi-topic report should become several cards. Allow splitting in that
 subtree, then review the proposed split before authoring.
@@ -74,7 +94,7 @@ Want it deeper or shallower? Use the density dial (or a `-cards` ceiling):
 To go deeper on just one section, add a `density_overrides` entry to that
 directory's `cards.yml` during the `-plan` review.
 
-## Use case 4 — build the catalog and read it
+## Use case 5 — build the catalog and read it
 
 Write a catalog config that scopes to cards only (`card` file type) and uses the
 markdown renderer, then run `kbi`.
@@ -134,7 +154,7 @@ file_types:
 This indexes every document (and parses cards card-aware), producing a full
 local navigation map of the repo.
 
-## Use case 5 — wire a consumer (e.g. a council member)
+## Use case 6 — wire a consumer (e.g. a council member)
 
 The retrieval protocol is shared once; each member just declares its slice.
 
@@ -156,7 +176,7 @@ shared retrieval protocol.
 A member-only session picks up the shared protocol automatically (CLAUDE.md loads
 up the directory tree).
 
-## Use case 6 — update when content changes
+## Use case 7 — update when content changes
 
 Edit a source, then re-run `/kb-card` over the area; it **reconciles** against
 `cards.yml` and only acts on what changed:
