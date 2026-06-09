@@ -377,7 +377,10 @@ missing parent directories in `PATH`.
   domained tree.
 - `output.views` — optional per-view emission map; each of `file_system`,
   `keyword`, `tag`, `word`, `dependencies`, `glossary` is `auto | on | off`
-  (default `auto`; see §5.3).
+  (default `auto`; see §5.3). The **word** index is **opt-in** (`auto` resolves to
+  off for both renderers); enable it with `views: { word: on }`. When off it is
+  not even computed, so it adds no build time — prefer `kbi search` (§5.6) for
+  ad-hoc lookups.
 - `types` — optional `{include: [...]}` or `{exclude: [...]}` selecting which
   **built-in** types to index. The built-in types are `card` (`.kb.md`),
   `markdown` (`.md`/`.markdown`), and `freeplane` (`.mm`). Handlers are built in;
@@ -427,7 +430,8 @@ navigational index that links to files, it does not contain their content (open 
 linked file to read it):
 
 - **File System** — directory tree → file links.
-- **Word** — significant word → file links.
+- **Word** — significant word → file links. **Opt-in** (off by default); see §5.6
+  for the preferred ad-hoc alternative.
 - **Keyword** — keyword hierarchy (from `keywords.files`) → file links.
 - **Tag** — tag → file links (freeplane node-tags or card frontmatter tags).
 - **Dependencies** — card → links to the cards it `builds_on` (cards only).
@@ -438,8 +442,9 @@ markdown), labeled by the card title (for `.kb.md`) or the filename.
 
 **Emission** is controlled by `output.views.<view>` (`auto|on|off`). `auto` is the
 renderer default: include-if-data for every view, **except** the word index, which
-defaults **on for freeplane** and **off for markdown** (it is verbose, and an agent
-can grep instead).
+is **opt-in** — `auto` resolves to off for both renderers. Enable it with
+`views: { word: on }`. While off it is not computed at all (no build-time cost);
+for ad-hoc full-text lookups use `kbi search` (§5.6) instead.
 
 ### 5.4 Renderer output structure
 
@@ -464,6 +469,30 @@ output:
   format: "markdown"
 types:
   include: [card]
+```
+
+### 5.6 Searching the indexed files — `kbi search`
+
+```
+python3 kbi.py search <config.yml> PATTERN [backend args...]
+```
+
+`search` resolves the **exact same file set** the config would index (same
+`types`, directory excludes, and generated-file skip), then runs **ripgrep** over
+those files — falling back to **grep** if `rg` is not on `PATH`. This is the
+on-demand replacement for the word index: full-text search scoped to precisely the
+indexed set, with nothing pre-materialised.
+
+- The `PATTERN` is the search regex; any further arguments are **passed through**
+  to the backend (e.g. `-i`, `-C2`, `-l`, `-w`).
+- `.mm` files are searched as raw XML (matches land on `TEXT="…"` lines); `.md`
+  and `.kb.md` are searched as text.
+- Exit status follows the backend: `0` = match found, `1` = no match, `2` = error
+  (bad config, no backend, etc.).
+
+```bash
+kbi.py search configs/Study25.yml "a-core" -i        # case-insensitive
+kbi.py search configs/Study25.yml "TODO|FIXME" -l    # list matching files only
 ```
 
 ## 6. Consumer Subscription Model

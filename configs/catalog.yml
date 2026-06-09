@@ -18,9 +18,10 @@ keywords:
 output:
   file: "/home/jon/dev/kb/index"   # markdown → an output directory of index files
   format: "markdown"
-  # Optional per-view overrides (auto|on|off). markdown defaults: word index off.
+  # Optional per-view overrides (auto|on|off). The word index is opt-in (off by
+  # default); prefer `kbi search <config> PATTERN` for ad-hoc lookups.
   # views:
-  #   word: on      # include the (verbose) word index in the markdown catalog
+  #   word: on      # include the (heavy) word index in the markdown catalog
   #   tag: off      # suppress the tag index
 
 types:

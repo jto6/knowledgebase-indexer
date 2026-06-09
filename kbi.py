@@ -460,7 +460,14 @@ class KnowledgebaseIndexer:
         a domain), and computes every view per partition. Card-only views
         (dependencies, glossary) are populated from card records.
         """
-        from index_model import IndexModel, DomainIndex, resolve_domain, NONE_DOMAIN
+        from index_model import (IndexModel, DomainIndex, resolve_domain,
+                                  NONE_DOMAIN, view_enabled, VIEW_WORD)
+
+        # The word index is opt-in and expensive (tokenises every node of every
+        # file). Skip computing it entirely unless it will be emitted, so disabling
+        # it saves the build time, not just the output size.
+        renderer = (self.config.get('output', {}) or {}).get('format', 'freeplane')
+        word_on = view_enabled(self.config, VIEW_WORD, renderer)
 
         card_records: Dict[str, Dict[str, Any]] = {}
         file_domain: Dict[str, Any] = {}
@@ -508,7 +515,7 @@ class KnowledgebaseIndexer:
             di.file_system = self.build_file_system_index(bfiles, handlers)
             di.keyword_entries = self.process_keyword_searches(bfiles, handlers)
             di.tags = self.extract_tags(bfiles, handlers)
-            di.words = self.extract_significant_words(bfiles, handlers)
+            di.words = self.extract_significant_words(bfiles, handlers) if word_on else {}
             for fp in bfiles:
                 rec = card_records.get(fp)
                 if not rec:
@@ -560,8 +567,71 @@ class KnowledgebaseIndexer:
             raise
 
 
+def run_search(argv: List[str]) -> int:
+    """`kbi search <config> PATTERN [backend args]` — search the indexed files.
+
+    Discovers exactly the files the index would cover (same `types`, directory
+    excludes, and generated-file skip), then runs ripgrep (preferred) or grep over
+    that file set. Arguments after PATTERN are passed through to the backend.
+    """
+    import shutil
+    import subprocess
+
+    parser = argparse.ArgumentParser(
+        prog='kbi search',
+        description="Search the files an index config covers, using ripgrep (or grep).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Extra arguments after PATTERN are passed through to the backend (rg, else grep):
+  kbi search configs/Study25.yml "a-core" -i -C2
+  kbi search configs/Study25.yml "TODO" -l        # list matching files only
+        """
+    )
+    parser.add_argument('config', help='Path to the index configuration file')
+    parser.add_argument('pattern', help='Search pattern (regex)')
+    args, passthrough = parser.parse_known_args(argv)
+
+    try:
+        config = ConfigLoader().load_config(args.config)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
+    files = KnowledgebaseIndexer(config).discover_files()
+    if not files:
+        print("No indexed files to search (check the config's directories/types).",
+              file=sys.stderr)
+        return 1
+
+    backend = shutil.which('rg') or shutil.which('grep')
+    if not backend:
+        print("Error: neither `rg` nor `grep` is on PATH.", file=sys.stderr)
+        return 2
+    is_rg = os.path.basename(backend) == 'rg'
+
+    # grep needs filename+line-number forced on; rg shows both by default.
+    base = [backend] if is_rg else [backend, '-n', '-H']
+    base += [*passthrough, '-e', args.pattern, '--']
+
+    # Search in chunks to stay under ARG_MAX; aggregate the exit status the way
+    # rg/grep do: 0 = match found, 1 = no match, >1 = error.
+    CHUNK = 2000
+    found = error = False
+    for i in range(0, len(files), CHUNK):
+        rc = subprocess.run(base + files[i:i + CHUNK]).returncode
+        if rc == 0:
+            found = True
+        elif rc > 1:
+            error = True
+    return 2 if error else (0 if found else 1)
+
+
 def main():
     """Main entry point."""
+    argv = sys.argv[1:]
+    if argv and argv[0] == 'search':
+        return run_search(argv[1:])
+
     parser = argparse.ArgumentParser(
         description="Generate navigational knowledge indexes for structured file collections (Freeplane .mm by default)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -573,8 +643,8 @@ Examples:
   # Override the output path
   python kbi.py configs/Study25.yml --output my_index.mm
 
-  # Enable debug output and file logging
-  python kbi.py configs/Study25.yml --debug --log-file /path/to/debug.log
+  # Search just the indexed files (ripgrep, else grep)
+  python kbi.py search configs/Study25.yml "a-core" -i
 
   # Scaffold a starter config (writes kbi.yml and exits; no config needed)
   python kbi.py --sample-config
@@ -648,7 +718,8 @@ output:
   format: "freeplane"
   partition_by_domain: "auto"   # auto | on | off
   # views:                      # per-view emission override (auto|on|off)
-  #   word: "off"
+  #   word: "on"                # the word index is opt-in (off by default); use
+  #                             # `kbi search <config> PATTERN` for ad-hoc lookups
 
 # Select which built-in types to index (handlers are built in). Omit `types` to
 # index all. A file is classified by its most-specific type (.kb.md = card).

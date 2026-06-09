@@ -166,8 +166,22 @@ types:
 python3 kbi.py configs/catalog-mm.yml      # → /home/jon/dev/kb/catalog.mm
 ```
 
-Open `catalog.mm` in Freeplane to browse the File System, Tag, and Word index
-branches over your cards.
+Open `catalog.mm` in Freeplane to browse the File System and Tag branches over
+your cards. (A Word index branch is available but **opt-in** — add
+`output.views: { word: on }` — since it is heavy; for ad-hoc full-text lookups
+prefer `kbi search`, below.)
+
+#### Search just the indexed files
+
+Instead of materialising a word index, search the exact set of files a config
+covers with ripgrep (falling back to grep):
+
+```bash
+python3 kbi.py search configs/catalog.yml "covenant" -i
+python3 kbi.py search configs/catalog.yml "TODO" -l     # list matching files
+```
+
+Arguments after the pattern pass straight through to the backend.
 
 To deep-index **one repo's raw content** (the original kbi use) *without* the
 card summaries, scope to that repo and exclude the `card` type:

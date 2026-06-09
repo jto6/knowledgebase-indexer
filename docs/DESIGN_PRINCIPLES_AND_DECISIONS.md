@@ -250,6 +250,21 @@ Each decision records the choice and why; supersessions are noted in the addenda
   is retained — it is the merge base for `_merge_with_defaults`, not a standalone
   fallback. Config auto-discovery (`./configs/kbi.yml`, `~/.config/kbi/…`) remains
   for library use. (P-usability)
+- **D20 — The word index is opt-in (default off, not computed when off); ad-hoc
+  search is a built-in `kbi search` over the indexed files.** The word index was
+  always a workaround for "search within just the indexed files," and it is
+  heavyweight — it tokenises every node of every file (the run that motivated this
+  produced ~1.5M leaf entries and a 407 MB `.mm`). It now defaults **off for both
+  renderers** (revising D16's freeplane-on default) and, crucially, is **not built
+  at all** unless `output.views.word: on` — the modeler skips
+  `extract_significant_words`, so disabling it saves the build time, not merely the
+  output bytes. (This does not violate D16: format still does not pick the model; an
+  explicitly-suppressed expensive view simply is not computed.) Replacing it,
+  `kbi search <config> PATTERN [args]` resolves the exact indexed file set (same
+  `types`, excludes, and the D18 generated-file skip) and runs **ripgrep**, falling
+  back to **grep** — passing extra args through to the backend and mirroring its
+  exit status. Search is on-demand and current, with nothing pre-materialised.
+  The word-index code is retained for the rare opt-in case. (P9, P-usability)
 
 ## 5. Card Schema (current)
 

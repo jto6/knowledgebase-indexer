@@ -137,10 +137,11 @@ def resolve_domain(file_path: str, card_record: Optional[dict]) -> Optional[str]
 def view_enabled(config: Dict[str, Any], view: str, renderer: str) -> bool:
     """Whether a view is serialized: `output.views.<view>` of auto|on|off overrides
     the per-renderer default. Default is include-if-data for every view, except the
-    word index which defaults on for freeplane and off for markdown."""
+    word index which is **opt-in** (default off for both renderers) — it is verbose,
+    heavy to build, and superseded by `kbi search`. Enable with `views.word: on`."""
     default = True
     if view == VIEW_WORD:
-        default = (renderer == "freeplane")
+        default = False
     setting = ((config.get("output", {}) or {}).get("views", {}) or {}).get(view, "auto")
     if setting == "on":
         return True

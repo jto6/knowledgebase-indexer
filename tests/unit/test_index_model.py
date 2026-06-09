@@ -13,9 +13,9 @@ from index_model import (view_enabled, resolve_domain, marker_comment,
 
 @pytest.mark.quick
 class TestViewEnabled:
-    def test_word_default_differs_by_renderer(self):
+    def test_word_is_opt_in_for_both_renderers(self):
         cfg = {"output": {}}
-        assert view_enabled(cfg, "word", "freeplane") is True
+        assert view_enabled(cfg, "word", "freeplane") is False
         assert view_enabled(cfg, "word", "markdown") is False
 
     def test_other_views_default_on(self):
@@ -31,7 +31,7 @@ class TestViewEnabled:
 
     def test_auto_is_default(self):
         cfg = {"output": {"views": {"word": "auto"}}}
-        assert view_enabled(cfg, "word", "freeplane") is True
+        assert view_enabled(cfg, "word", "freeplane") is False
         assert view_enabled(cfg, "word", "markdown") is False
 
 

@@ -19,10 +19,11 @@ output:
   format: "freeplane"       # freeplane (.mm) | markdown (per-domain index files)
   partition_by_domain: "auto" # auto (split by domain if any file has one) | on | off
   # Per-view emission. Each view is auto | on | off. `auto` is the renderer
-  # default: every view is include-if-it-has-data, except `word`, which defaults
-  # ON for freeplane and OFF for markdown. Override here to force a view:
+  # default: every view is include-if-it-has-data, except `word`, which is opt-in
+  # (off by default for both renderers — it is heavy; use `kbi search` instead).
+  # Override here to force a view:
   views:
-    word: "off"             # e.g. keep the .mm small by dropping the word index
+    # word: "on"            # opt in to the (heavy) word index
     # file_system: on
     # keyword: on
     # tag: off
