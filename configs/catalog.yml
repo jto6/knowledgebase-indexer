@@ -23,7 +23,5 @@ output:
   #   word: on      # include the (verbose) word index in the markdown catalog
   #   tag: off      # suppress the tag index
 
-file_types:
-  card:
-    extensions: [".kb.md"]
-    handler: "CardHandler"
+types:
+  include: [card]

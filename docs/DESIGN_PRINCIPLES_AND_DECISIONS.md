@@ -136,15 +136,18 @@ Each decision records the choice and why; supersessions are noted in the addenda
   superseded by cards + native source reading; its one residual role (archiving
   volatile remote URLs) is now fulfilled by `/kb-card`'s URL capture (D15). The
   command has been removed. (P6) — see Addenda D and G.
-- **D12 — Catalog scope is the set of enabled `file_types`; a card is a file
-  type.** kbi indexes a file only if its extension belongs to an *enabled* file
-  type, and `*.kb.md` cards are their own type (`CardHandler`, keyed on the
-  compound `.kb.md` extension and winning precedence over `.md`). So one engine
-  serves two profiles by configuration alone: a **card-only catalog** (enable
-  only `card` → distilled, cross-repo) and a **deep within-repo index** (enable
-  `card` + `markdown` + … → full content, local output). An explicit `file_types`
-  **replaces** the defaults rather than merging, so scope can actually be
-  narrowed. (P9, D2) — see Addendum F. *(Implemented in increment A.)*
+- **D12 — Catalog scope is the set of enabled built-in *types*; a card is a
+  type.** Handlers are built into kbi (they are not config); the config only
+  selects which built-in types to index via `types: {include|exclude: [...]}`
+  over the names `card` (`.kb.md`), `markdown` (`.md`/`.markdown`), `freeplane`
+  (`.mm`). Each file is classified by its **most-specific** type, then indexed
+  iff that type is enabled — so `*.kb.md` is always a `card`, never a stray
+  `markdown`. One engine serves two profiles by configuration alone: a
+  **card-only catalog** (`types: {include: [card]}` → distilled, cross-repo) and
+  a **deep within-repo index** (`types: {exclude: [card]}` → raw content without
+  the summaries; or omit `types` for everything). (P9, D2) — superseded the
+  `file_types` map of Addendum F; see D17. *(Implemented in increment A; refined
+  by the `file_types`→`types` refactor, D17.)*
 - **D13 — Central catalog home is `~/dev/kb/`; slices live at
   `~/dev/kb/index/<domain>.md`.** kbi's markdown renderer writes per-domain slices
   to this predictable path so any consumer can subscribe. The retrieval protocol
@@ -206,6 +209,19 @@ Each decision records the choice and why; supersessions are noted in the addenda
   the top); markdown writes `INDEX.md` plus one `<domain>.md` per domain (or views
   inlined into `INDEX.md` when unpartitioned), each led by a file-type-agnostic
   how-to header. (P9) — see §7.
+- **D17 — Handlers are built in; `types` selects them by name (replaces
+  `file_types`).** The earlier `file_types` map exposed handler internals
+  (`extensions`, `handler` class) in user config and required brittle
+  replace-vs-merge semantics (Addendum F). It is removed. kbi ships a fixed set
+  of built-in types — `card` (`.kb.md`), `markdown` (`.md`/`.markdown`),
+  `freeplane` (`.mm`) — and the config only **selects** them by name via
+  `types: {include: [...]}` (whitelist) or `types: {exclude: [...]}` (blacklist);
+  omit `types` to index all. Each file is classified by its **most-specific**
+  built-in type (longest matching extension), then indexed iff that type is
+  enabled. This makes `types: {exclude: [card]}` actually drop `.kb.md` files
+  rather than letting them fall through to the `markdown` handler — the precise
+  behavior the deep-index-without-summaries use needs. (P9, D2) — supersedes the
+  `file_types` mechanism of D12/Addendum F.
 
 ## 5. Card Schema (current)
 
@@ -481,7 +497,7 @@ Done (increment A):
   hidden directories, so the feared dot-directory glob change was unnecessary.
 - Parse **YAML frontmatter `tags`** — already supported by the markdown handler;
   the `CardHandler` now labels them by the card **title** instead of the filename.
-- `CardHandler` + card scoping via enabled `file_types` (see D12).
+- `CardHandler` + card scoping via the enabled `types` (see D12, D17).
 
 Done (increment B):
 
@@ -571,6 +587,10 @@ its source. Hidden dotfiles are slightly easier to forget, but routine
 regeneration (kbi / roll-up) surfaces them, so the risk is low.
 
 ### Addendum F — Scope as enabled file types; `file_types` replace semantics
+
+> **Superseded by D17.** The `file_types` map (and its replace-vs-merge
+> semantics) has been removed in favor of built-in types selected by name via
+> `types: {include|exclude: [...]}`. The history below is retained for context.
 
 Increment A wiring surfaced two things. First, kbi discovers files with `os.walk`,
 which descends into hidden directories, so cards under `.kb/` are found with no

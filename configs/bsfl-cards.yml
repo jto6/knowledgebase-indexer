@@ -17,7 +17,5 @@ output:
   file: "/tmp/bsfl_cards_index.mm"
   format: "freeplane"
 
-file_types:
-  card:
-    extensions: [".kb.md"]
-    handler: "CardHandler"
+types:
+  include: [card]

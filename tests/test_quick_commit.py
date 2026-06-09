@@ -39,7 +39,7 @@ class TestQuickSmoke:
         
         assert 'directories' in config
         assert 'output' in config
-        assert 'file_types' in config
+        assert 'file_types' not in config   # handlers are built in
         assert isinstance(config['directories']['include'], list)
     
     def test_unique_id_generation(self):

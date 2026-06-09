@@ -22,12 +22,7 @@ output:
   format: "freeplane"
   # This is a deep, general mind-map index of mixed trees; keep it flat even
   # though SDV-research carries a domain (its kb.yml) that would otherwise split it.
-  partition_by_domain: off
+  partition_by_domain: "off"
 
-file_types:
-  freeplane:
-    extensions: [".mm"]
-    handler: "FreeplaneHandler"
-  markdown:
-    extensions: [".md", ".markdown"]
-    handler: "MarkdownHandler"
+types:
+  exclude: [card]     # deep content index — exclude the .kb.md card summaries

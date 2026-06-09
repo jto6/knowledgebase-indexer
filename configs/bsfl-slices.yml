@@ -18,7 +18,5 @@ output:
   file: "/tmp/kb_slices"
   format: "markdown"
 
-file_types:
-  card:
-    extensions: [".kb.md"]
-    handler: "CardHandler"
+types:
+  include: [card]

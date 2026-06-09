@@ -65,9 +65,26 @@ class ConfigLoader:
                 config = yaml.safe_load(f)
             else:
                 config = json.load(f)
-        
+
+        config = self._normalize_enums(config)
         self.validate_config(config)
         return self._merge_with_defaults(config)
+
+    def _normalize_enums(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """YAML parses `on`/`off`/`yes`/`no` as booleans; coerce them back to the
+        string enums the schema expects (output.partition_by_domain, output.views.*)
+        so users can write `off`/`on` unquoted."""
+        def s(v):
+            return 'on' if v is True else 'off' if v is False else v
+        out = config.get('output') if isinstance(config, dict) else None
+        if isinstance(out, dict):
+            if 'partition_by_domain' in out:
+                out['partition_by_domain'] = s(out['partition_by_domain'])
+            views = out.get('views')
+            if isinstance(views, dict):
+                for k in list(views):
+                    views[k] = s(views[k])
+        return config
     
     def validate_config(self, config: Dict[str, Any]):
         """Validate configuration against schema."""
@@ -90,75 +107,28 @@ class ConfigLoader:
             "output": {
                 "file": "index.mm",
                 "format": "freeplane"
-            },
-            "file_types": {
-                "freeplane": {
-                    "extensions": [".mm"],
-                    "handler": "FreeplaneHandler",
-                    "hierarchy_config": {
-                        "type": "xml_nodes",
-                        "parent_element": "node",
-                        "child_selector": "./node"
-                    },
-                    "search_config": {
-                        "content_fields": ["TEXT", "RICHCONTENT"]
-                    },
-                    "link_config": {
-                        "format": "{path}#{fragment}",
-                        "supports_fragments": True
-                    }
-                },
-                "markdown": {
-                    "extensions": [".md", ".markdown"],
-                    "handler": "MarkdownHandler",
-                    "hierarchy_config": {
-                        "type": "composite",
-                        "structures": [
-                            {
-                                "type": "heading_levels",
-                                "heading_tags": ["h1", "h2", "h3", "h4", "h5", "h6"],
-                                "content_scope": "heading_plus_content_until_next_heading"
-                            },
-                            {
-                                "type": "nested_lists",
-                                "list_types": ["ul", "ol"],
-                                "nesting_logic": "indentation_based"
-                            }
-                        ]
-                    },
-                    "search_config": {
-                        "content_fields": ["heading_text", "section_content", "list_item_text"]
-                    },
-                    "link_config": {
-                        "format": "{path}#{anchor}",
-                        "supports_fragments": True
-                    }
-                }
             }
         }
-    
+
     def _merge_with_defaults(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Merge user config with defaults."""
         default_config = self._get_default_config()
-        
+
         # Simple deep merge - in production would use more sophisticated merging
         merged = default_config.copy()
-        
+
         if "directories" in config:
             merged["directories"].update(config["directories"])
-        
+
         if "keywords" in config:
             merged["keywords"].update(config["keywords"])
-        
+
         if "output" in config:
             merged["output"].update(config["output"])
-        
-        # file_types REPLACES the defaults rather than merging into them. The set
-        # of enabled file types defines the index scope, so merging would make it
-        # impossible to narrow scope (e.g. a card-only catalog would still inherit
-        # the default markdown/freeplane types and index raw sources). A config
-        # that wants a deep index lists every type it needs explicitly.
-        if "file_types" in config:
-            merged["file_types"] = config["file_types"]
+
+        # `types` selects which built-in handlers to index (include/exclude by
+        # name). Carry it through as-is; absence means all built-in types.
+        if "types" in config:
+            merged["types"] = config["types"]
 
         return merged

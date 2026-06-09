@@ -39,6 +39,16 @@ from word_filter import SignificantWordFilter
 from logging_config import AppLogger, LoggedOperation, create_component_logger
 
 
+# Built-in file types: (name, extensions, handler). Handlers are part of kbi — the
+# config selects among these by name (`types` include/exclude); it never declares
+# them. A file is classified by its most-specific (longest-extension) matching type.
+BUILTIN_TYPES = [
+    ("card", [".kb.md"], "CardHandler"),
+    ("freeplane", [".mm"], "FreeplaneHandler"),
+    ("markdown", [".md", ".markdown"], "MarkdownHandler"),
+]
+
+
 class KnowledgebaseIndexer:
     """Main application class for generating knowledge indexes (render-independent model, pluggable renderers)."""
     
@@ -67,8 +77,37 @@ class KnowledgebaseIndexer:
         self.search_engine.set_debug(debug)
         self.keyword_processor.set_debug(debug)
     
+    def _enabled_types(self) -> List[str]:
+        """Type names enabled by config `types`: include (whitelist) | exclude
+        (blacklist) | neither (all built-in types)."""
+        names = [t[0] for t in BUILTIN_TYPES]
+        spec = self.config.get('types') or {}
+        if spec.get('include') is not None:
+            inc = set(spec['include'])
+            return [n for n in names if n in inc]
+        if spec.get('exclude') is not None:
+            exc = set(spec['exclude'])
+            return [n for n in names if n not in exc]
+        return names
+
+    def _type_of(self, filename: str):
+        """The file's type = its most-specific (longest-extension) matching built-in
+        type, or None. So `foo.kb.md` is a `card`, not `markdown`."""
+        best, best_len = None, -1
+        for name, exts, _ in BUILTIN_TYPES:
+            for e in exts:
+                if filename.endswith(e) and len(e) > best_len:
+                    best, best_len = name, len(e)
+        return best
+
+    def _builtin_handler(self, type_name: str):
+        for name, exts, handler_name in BUILTIN_TYPES:
+            if name == type_name:
+                return handler_registry.get_handler(handler_name, {'extensions': exts})
+        return None
+
     def discover_files(self) -> List[str]:
-        """Discover files in directories matching glob patterns, filtered by file_types extensions.
+        """Discover files in directories matching glob patterns, filtered to enabled built-in types.
 
         Optimized version that uses os.walk with early directory pruning for much better performance.
         """
@@ -80,10 +119,12 @@ class KnowledgebaseIndexer:
             output_file = Path(self.config['output']['file']).resolve()
             self.logger.debug(f"Excluding output file from indexing: {output_file}")
 
-            # Get supported extensions from file_types
+            # Candidate extensions = every built-in type's extensions; a file is
+            # kept only if its most-specific type is enabled (config `types`).
+            enabled_types = set(self._enabled_types())
             supported_extensions = set()
-            for file_type_config in self.config['file_types'].values():
-                supported_extensions.update(file_type_config.get('extensions', []))
+            for _name, exts, _h in BUILTIN_TYPES:
+                supported_extensions.update(exts)
 
             AppLogger.log_algorithm_step('main', 'starting_file_discovery', {
                 'include_dir_patterns': len(include_dir_patterns),
@@ -150,8 +191,9 @@ class KnowledgebaseIndexer:
                         for filename in filenames:
                             file_path = os.path.join(dirpath, filename)
 
-                            # Check if file has supported extension
-                            if any(filename.endswith(ext) for ext in supported_extensions):
+                            # Keep only files whose most-specific built-in type is enabled
+                            if (any(filename.endswith(ext) for ext in supported_extensions)
+                                    and self._type_of(filename) in enabled_types):
                                 # Double-check the full path isn't in an excluded location
                                 # and that it's not the output file
                                 if not is_excluded(file_path) and Path(file_path).resolve() != output_file:
@@ -183,12 +225,14 @@ class KnowledgebaseIndexer:
             return result_files
     
     def create_file_handlers(self, files: List[str]) -> Dict[str, Any]:
-        """Create handlers for discovered files."""
+        """Assign each file the handler for its (enabled) built-in type."""
         handlers = {}
-        file_types_config = self.config['file_types']
-        
+        enabled_types = set(self._enabled_types())
         for file_path in files:
-            handler = handler_registry.get_handler_for_file(file_path, file_types_config)
+            t = self._type_of(file_path)
+            if t not in enabled_types:
+                continue
+            handler = self._builtin_handler(t)
             if handler and handler.validate_file(file_path):
                 handlers[file_path] = handler
             elif self.debug:
@@ -599,14 +643,15 @@ keywords:
 output:
   file: "index.mm"
   format: "freeplane"
+  partition_by_domain: "auto"   # auto | on | off
+  # views:                      # per-view emission override (auto|on|off)
+  #   word: "off"
 
-file_types:
-  freeplane:
-    extensions: [".mm"]
-    handler: "FreeplaneHandler"
-  markdown:
-    extensions: [".md", ".markdown"]
-    handler: "MarkdownHandler"
+# Select which built-in types to index (handlers are built in). Omit `types` to
+# index all. A file is classified by its most-specific type (.kb.md = card).
+# types:
+#   exclude: [card]             # e.g. a deep content index without card summaries
+#   include: [card]             # or a card-only catalog
 """
         
         with open('kbi.yml', 'w') as f:

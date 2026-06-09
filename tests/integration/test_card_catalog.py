@@ -88,7 +88,7 @@ def _md_config(root: Path, out: Path, views=None):
         "directories": {"include": [str(root)], "exclude": []},
         "keywords": {"files": []},
         "output": {"file": str(out), "format": "markdown"},
-        "file_types": {"card": {"extensions": [".kb.md"], "handler": "CardHandler"}},
+        "types": {"include": ["card"]},
     }
     if views is not None:
         cfg["output"]["views"] = views
@@ -161,7 +161,7 @@ class TestMarkdownIndex:
             "directories": {"include": [str(temp_dir)], "exclude": []},
             "keywords": {"files": []},
             "output": {"file": str(out), "format": "markdown"},
-            "file_types": {"markdown": {"extensions": [".md"], "handler": "MarkdownHandler"}},
+            "types": {"include": ["markdown"]},
         }
         KnowledgebaseIndexer(cfg).run()
         assert {p.name for p in out.iterdir()} == {"INDEX.md"}
@@ -185,7 +185,7 @@ class TestMarkdownIndex:
             "directories": {"include": [str(temp_dir)], "exclude": []},
             "keywords": {"files": []},
             "output": {"file": str(out), "format": "markdown", "partition_by_domain": "on"},
-            "file_types": {"markdown": {"extensions": [".md"], "handler": "MarkdownHandler"}},
+            "types": {"include": ["markdown"]},
         }
         KnowledgebaseIndexer(cfg).run()
         assert (out / "none.md").exists()
@@ -201,7 +201,7 @@ class TestFreeplaneModel:
             "directories": {"include": [str(temp_dir)], "exclude": []},
             "keywords": {"files": []},
             "output": {"file": str(out), "format": "freeplane"},
-            "file_types": {"card": {"extensions": [".kb.md"], "handler": "CardHandler"}},
+            "types": {"include": ["card"]},
         }
         KnowledgebaseIndexer(cfg).run()
         texts = {n.get("TEXT") for n in ET.parse(out).iter("node")}

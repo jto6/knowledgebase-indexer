@@ -136,8 +136,8 @@ directories:
   exclude: ["**/.git/**", "**/__pycache__/**"]
 keywords: { files: [] }
 output: { file: "/home/jon/dev/kb/index", format: "markdown" }
-file_types:
-  card: { extensions: [".kb.md"], handler: "CardHandler" }
+types:
+  include: [card]
 ```
 
 ```bash
@@ -158,8 +158,8 @@ navigation view). Switch `format` to `freeplane` and point `output.file` at a
 
 ```yaml
 output: { file: "/home/jon/dev/kb/catalog.mm", format: "freeplane" }
-file_types:
-  card: { extensions: [".kb.md"], handler: "CardHandler" }
+types:
+  include: [card]
 ```
 
 ```bash
@@ -169,17 +169,14 @@ python3 kbi.py --config configs/catalog-mm.yml      # → /home/jon/dev/kb/catal
 Open `catalog.mm` in Freeplane to browse the File System, Tag, and Word index
 branches over your cards.
 
-To deep-index **one repo's full content** (not just cards — the original kbi
-use), scope to that repo and enable all file types:
+To deep-index **one repo's raw content** (the original kbi use) *without* the
+card summaries, scope to that repo and exclude the `card` type:
 
 ```yaml
 directories: { include: ["/home/jon/dev/research/SDV-research"] }
 keywords: { files: [] }
-output: { file: "/home/jon/dev/research/SDV-research/index.mm", format: "freeplane" }
-file_types:
-  card:      { extensions: [".kb.md"],          handler: "CardHandler" }
-  markdown:  { extensions: [".md", ".markdown"], handler: "MarkdownHandler" }
-  freeplane: { extensions: [".mm"],             handler: "FreeplaneHandler" }
+output: { file: "/home/jon/dev/research/SDV-research/index.mm", format: "freeplane", partition_by_domain: "off" }
+types: { exclude: [card] }   # index everything except the .kb.md card summaries
 ```
 
 This indexes every document (and parses cards card-aware), producing a full

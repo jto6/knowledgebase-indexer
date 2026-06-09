@@ -90,12 +90,10 @@ class TestConfigLoader:
         assert 'directories' in config
         assert 'keywords' in config
         assert 'output' in config
-        assert 'file_types' in config
-        
+        assert 'file_types' not in config   # handlers are built in, not declared in config
+
         assert isinstance(config['directories']['include'], list)
         assert isinstance(config['directories']['exclude'], list)
-        assert 'freeplane' in config['file_types']
-        assert 'markdown' in config['file_types']
     
     def test_merge_with_defaults(self):
         """Test merging user config with defaults."""
@@ -117,9 +115,10 @@ class TestConfigLoader:
         assert merged['directories']['exclude'] == ["temp/*"]
         assert merged['output']['file'] == "custom_output.mm"
         
-        # Should have default values for unspecified fields
-        assert 'file_types' in merged
-        assert 'freeplane' in merged['file_types']
+        # `types` is carried through when given; absent here → not added
+        assert 'types' not in merged
+        merged2 = loader._merge_with_defaults({**user_config, "types": {"include": ["card"]}})
+        assert merged2['types'] == {"include": ["card"]}
     
     def test_config_discovery_nonexistent(self, temp_dir, monkeypatch):
         """Test config discovery when no files exist."""
@@ -227,68 +226,27 @@ class TestConfigSchema:
         # Should not raise
         jsonschema.validate(minimal_config, schema)
     
-    def test_schema_rejects_invalid_extensions(self):
-        """Test schema rejects invalid file extensions."""
+    def test_schema_rejects_invalid_type(self):
+        """Schema rejects an unknown built-in type name in `types`."""
         schema_path = Path(__file__).parent.parent.parent / "config_schema.json"
         with open(schema_path) as f:
             schema = json.load(f)
-        
+
         invalid_config = {
             "directories": {"include": ["*.md"]},
             "output": {"file": "test.mm"},
-            "file_types": {
-                "test": {
-                    "extensions": ["invalid"],  # Missing dot
-                    "handler": "TestHandler"
-                }
-            }
+            "types": {"include": ["bogus"]},   # not a built-in type
         }
-        
+
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(invalid_config, schema)
-    
-    def test_schema_validates_hierarchy_configs(self):
-        """Test schema validates different hierarchy configurations."""
+
+    def test_schema_accepts_types_include_exclude(self):
+        """Schema accepts include/exclude of valid built-in type names."""
         schema_path = Path(__file__).parent.parent.parent / "config_schema.json"
         with open(schema_path) as f:
             schema = json.load(f)
-        
-        # XML nodes config
-        xml_config = {
-            "directories": {"include": ["*.mm"]},
-            "output": {"file": "test.mm"},
-            "file_types": {
-                "test": {
-                    "extensions": [".mm"],
-                    "handler": "TestHandler",
-                    "hierarchy_config": {
-                        "type": "xml_nodes",
-                        "parent_element": "node",
-                        "child_selector": "./node"
-                    }
-                }
-            }
-        }
-        
-        jsonschema.validate(xml_config, schema)
-        
-        # Composite config
-        composite_config = {
-            "directories": {"include": ["*.md"]},
-            "output": {"file": "test.mm"},
-            "file_types": {
-                "test": {
-                    "extensions": [".md"],
-                    "handler": "TestHandler",
-                    "hierarchy_config": {
-                        "type": "composite",
-                        "structures": [
-                            {"type": "heading_levels"},
-                            {"type": "nested_lists"}
-                        ]
-                    }
-                }
-            }
-        }
-        
-        jsonschema.validate(composite_config, schema)
+        for types in ({"include": ["card"]}, {"exclude": ["card", "freeplane"]}):
+            jsonschema.validate(
+                {"directories": {"include": ["*.md"]}, "output": {"file": "o.mm"}, "types": types},
+                schema)

@@ -104,10 +104,21 @@ renderers (e.g. the planned Markdown renderer) satisfy their own equivalents.
 - **R-CFG-006**: Support multiple include and exclude patterns
 
 ### 3.3 File Type Configuration
-- **R-CFG-007**: Define supported file types via extensible YAML configuration
-- **R-CFG-008**: Map file extensions to handler implementations
-- **R-CFG-009**: Configure file-type-specific search and link behaviors
-- **R-CFG-010**: Define hierarchical structure interpretation for each file type
+
+> **Updated by D17 (see DESIGN_PRINCIPLES_AND_DECISIONS.md).** Handlers are
+> **built into kbi**, not declared in config. The built-in types are `card`
+> (`.kb.md`), `markdown` (`.md`/`.markdown`), and `freeplane` (`.mm`). Config
+> only **selects** which built-in types to index, by name. The per-type
+> `hierarchy_config`/`search_config`/`link_config` shown in §4.1–§4.2 below is
+> retained as historical design context, not current config surface.
+
+- **R-CFG-007**: Ship a fixed set of built-in file types with their handlers
+- **R-CFG-008**: Classify each discovered file by its most-specific built-in
+  type (longest matching extension; `.kb.md` → `card`, not `markdown`)
+- **R-CFG-009**: Select indexed types via `types: {include: [...]}` (whitelist)
+  or `types: {exclude: [...]}` (blacklist); omit `types` to index all
+- **R-CFG-010**: Index a file iff its classified type is enabled, so excluding
+  `card` drops `.kb.md` files entirely (no fall-through to `markdown`)
 
 ### 3.4 Keyword Configuration
 - **R-CFG-011**: Specify keyword file location in configuration
@@ -121,6 +132,11 @@ renderers (e.g. the planned Markdown renderer) satisfy their own equivalents.
 ## 4. Interface Requirements
 
 ### 4.1 Configuration File Schema
+
+> The `file_types:` blocks in §4.1–§4.2 below predate D17 and describe handler
+> internals (hierarchy/search/link) for design context only. The current config
+> surface for type selection is `types: {include|exclude: [...]}` (see §3.3).
+
 ```yaml
 # Main configuration structure
 directories:

@@ -7,7 +7,7 @@ Covers:
 - frontmatter + essence parsing into a card record
 - card-aware tag extraction (frontmatter tags labeled by card title)
 - handler precedence (compound `.kb.md` wins over `.md`)
-- config `file_types` replace semantics (enables distilled-only scope)
+- built-in type selection and most-specific classification (`types` include/exclude)
 """
 
 import pytest
@@ -141,22 +141,25 @@ class TestHandlerPrecedence:
 
 
 @pytest.mark.quick
-class TestFileTypesReplaceSemantics:
-    def test_explicit_file_types_replace_defaults(self):
-        """A card-only config must NOT inherit the default markdown/freeplane
-        types, otherwise distilled-only scoping is impossible."""
-        loader = ConfigLoader()
-        user = {
-            "directories": {"include": ["."]},
-            "output": {"file": "out.mm"},
-            "file_types": {"card": {"extensions": [".kb.md"], "handler": "CardHandler"}},
-        }
-        merged = loader._merge_with_defaults(user)
-        assert set(merged["file_types"].keys()) == {"card"}
+class TestTypeSelection:
+    """Built-in types are selected by name via `types` include/exclude; a file is
+    classified by its most-specific type."""
 
-    def test_defaults_used_when_file_types_absent(self):
-        loader = ConfigLoader()
-        user = {"directories": {"include": ["."]}, "output": {"file": "out.mm"}}
-        merged = loader._merge_with_defaults(user)
-        assert "markdown" in merged["file_types"]
-        assert "freeplane" in merged["file_types"]
+    def _indexer(self, types=None):
+        from kbi import KnowledgebaseIndexer
+        cfg = {"directories": {"include": ["."]}, "output": {"file": "o", "format": "markdown"}}
+        if types is not None:
+            cfg["types"] = types
+        return KnowledgebaseIndexer(cfg)
+
+    def test_classify_most_specific(self):
+        g = self._indexer()
+        assert g._type_of("foo.kb.md") == "card"     # not markdown
+        assert g._type_of("foo.md") == "markdown"
+        assert g._type_of("foo.mm") == "freeplane"
+        assert g._type_of("foo.pdf") is None
+
+    def test_enabled_types_default_include_exclude(self):
+        assert set(self._indexer()._enabled_types()) == {"card", "markdown", "freeplane"}
+        assert self._indexer({"include": ["card"]})._enabled_types() == ["card"]
+        assert set(self._indexer({"exclude": ["card"]})._enabled_types()) == {"markdown", "freeplane"}

@@ -18,11 +18,7 @@ keywords:
 output:
   file: "index.mm"
   format: "freeplane"
+  partition_by_domain: "off"  # flat index even though SDV-research carries a domain
 
-file_types:
-  freeplane:
-    extensions: [".mm"]
-    handler: "FreeplaneHandler"
-  markdown:
-    extensions: [".md", ".markdown"]
-    handler: "MarkdownHandler"
+types:
+  exclude: [card]            # deep content index — exclude the .kb.md card summaries

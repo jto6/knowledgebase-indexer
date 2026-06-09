@@ -17,22 +17,21 @@ keywords:
 output:
   file: "index.mm"          # for format: markdown this is the output *directory*
   format: "freeplane"       # freeplane (.mm) | markdown (per-domain index files)
-  partition_by_domain: auto # auto (split by domain if any file has one) | on | off
+  partition_by_domain: "auto" # auto (split by domain if any file has one) | on | off
   # Per-view emission. Each view is auto | on | off. `auto` is the renderer
   # default: every view is include-if-it-has-data, except `word`, which defaults
   # ON for freeplane and OFF for markdown. Override here to force a view:
   views:
-    word: off               # e.g. keep the .mm small by dropping the word index
+    word: "off"             # e.g. keep the .mm small by dropping the word index
     # file_system: on
     # keyword: on
     # tag: off
     # dependencies: on
     # glossary: on
 
-file_types:
-  freeplane:
-    extensions: [".mm"]
-    handler: "FreeplaneHandler"
-  markdown:
-    extensions: [".md", ".markdown"]
-    handler: "MarkdownHandler"
+# Select which built-in types to index. Handlers are built in; you only
+# include/exclude them by name (card | markdown | freeplane). Omit `types` to
+# index all. A file is classified by its most-specific type (.kb.md = card).
+types:
+  exclude: [card]     # deep content index — everything except the card summaries
+  # include: [card]   # (alternative) card-only catalog

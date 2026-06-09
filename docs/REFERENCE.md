@@ -372,18 +372,22 @@ python3 kbi.py --config <config.yml>
 - `output.views` — optional per-view emission map; each of `file_system`,
   `keyword`, `tag`, `word`, `dependencies`, `glossary` is `auto | on | off`
   (default `auto`; see §5.3).
-- `file_types` — map of enabled types; each has `extensions` and `handler`. **An
-  explicit `file_types` replaces the defaults** (it does not merge), so the set of
-  enabled types defines the index scope.
+- `types` — optional `{include: [...]}` or `{exclude: [...]}` selecting which
+  **built-in** types to index. The built-in types are `card` (`.kb.md`),
+  `markdown` (`.md`/`.markdown`), and `freeplane` (`.mm`). Handlers are built in;
+  the config only includes/excludes them by name. Omit `types` to index all.
 
-### 5.2 Scoping via `file_types`
+### 5.2 Scoping via `types`
 
-- **Card-only (catalog):** enable only `card` (`extensions: [".kb.md"]`,
-  `handler: CardHandler`) → indexes only distilled cards.
-- **Deep (within-repo):** enable `card` + `markdown` + `freeplane` → indexes full
-  content; cards are still parsed card-aware.
-- **Precedence:** when more than one type matches, the **longest matching
-  extension wins**, so `.kb.md` is always handled by `CardHandler` over `.md`.
+A file is **classified by its most-specific built-in type** (e.g. `.kb.md` is a
+`card`, not `markdown`), then indexed iff that type is enabled. So:
+
+- **Card-only (catalog):** `types: { include: [card] }` → only `.kb.md` cards.
+- **Deep, without the summaries:** `types: { exclude: [card] }` → all content
+  *except* cards. Because `.kb.md` classifies as `card`, excluding `card` drops
+  those files entirely — they do **not** fall through to the `markdown` handler.
+- **Deep, everything:** omit `types` → all built-in types (cards parsed
+  card-aware).
 
 ### 5.3 The index model and views
 
@@ -434,10 +438,8 @@ keywords:
 output:
   file: "/home/jon/dev/kb/index"
   format: "markdown"
-file_types:
-  card:
-    extensions: [".kb.md"]
-    handler: "CardHandler"
+types:
+  include: [card]
 ```
 
 ## 6. Consumer Subscription Model
