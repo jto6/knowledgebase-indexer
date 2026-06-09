@@ -402,26 +402,7 @@ class KnowledgebaseIndexer:
             print(f"Consolidated {len(word_to_matches)} words into {len(consolidated_matches)} patterns with frequency >= {min_frequency}")
         
         return consolidated_matches
-    
-    def generate_mind_map(self, file_system_index: Dict[str, List[HierarchicalNode]],
-                         keyword_entries: List[Any],
-                         tag_results: Dict[str, List[tuple]],
-                         word_results: Dict[str, Dict]) -> str:
-        """Generate the final mind map file."""
-        output_path = self.config['output']['file']
-        
-        # Pass hierarchical keyword entries to preserve exact file structure  
-        generator = FreeplaneMapGenerator(output_path)
-        result_path = generator.create_mind_map(
-            file_system_index=file_system_index,
-            keyword_entries=keyword_entries,
-            tag_results=tag_results,
-            word_results=word_results,
-            config=self.config
-        )
-        
-        return result_path
-    
+
     def build_index_model(self, files: List[str], handlers: Dict[str, Any]):
         """Build the unified, domain-partitioned index model (D16).
 
