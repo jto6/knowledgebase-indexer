@@ -617,12 +617,15 @@ def validate_config(config_data, schema_path):
 ```
 
 ### 7.2 Configuration Discovery Order
-Search for configuration files in this priority order:
 
-1. Command line `--config` argument
-2. `./config/` in current working directory
-3. User configuration directory (`~/.config/mmdir/`)
-4. Built-in defaults
+The config path is a **required positional argument**; there is no built-in
+default-config fallback (a run with no config errors out). When invoked as a
+library without an explicit path, `load_config` searches in this priority order
+and raises if none is found:
+
+1. Command-line positional `config` argument
+2. `./configs/` then `./config/` in the current working directory (`kbi.yml`/`kbi.yaml`)
+3. User configuration directory (`~/.config/kbi/`)
 
 ### 7.3 Handler Registration
 Use dynamic loading for extensible handler architecture:

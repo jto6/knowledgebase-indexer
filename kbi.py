@@ -567,28 +567,26 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Generate index with default configuration
-  python kbi.py
-  
-  # Use specific configuration file
-  python kbi.py --config /path/to/config.yml
-  
-  # Enable debug output
-  python kbi.py --debug
-  
-  # Specify output file
-  python kbi.py --output my_index.mm
-  
-  # Enable file logging
-  python kbi.py --debug --log-file /path/to/debug.log
+  # Generate an index from a config file (required)
+  python kbi.py configs/Study25.yml
+
+  # Override the output path
+  python kbi.py configs/Study25.yml --output my_index.mm
+
+  # Enable debug output and file logging
+  python kbi.py configs/Study25.yml --debug --log-file /path/to/debug.log
+
+  # Scaffold a starter config (writes kbi.yml and exits; no config needed)
+  python kbi.py --sample-config
         """
     )
-    
+
     parser.add_argument(
-        '--config', '-c',
-        help='Path to configuration file'
+        'config',
+        nargs='?',
+        help='Path to configuration file (required, except with --sample-config/--sample-keywords)'
     )
-    
+
     parser.add_argument(
         '--output', '-o',
         help='Output file path (overrides config)'
@@ -668,7 +666,13 @@ output:
         from keywords import create_sample_keyword_file
         create_sample_keyword_file('keywords.txt')
         return 0
-    
+
+    # A config is required for any actual indexing run (the utility modes above
+    # exit before reaching here).
+    if not args.config:
+        parser.error("a config file is required (e.g. `kbi.py configs/Study25.yml`); "
+                     "use --sample-config to scaffold one")
+
     try:
         # Set up logging first
         console_level = 'DEBUG' if args.debug else args.console_level
@@ -688,7 +692,7 @@ output:
         config_loader = ConfigLoader()
         config = config_loader.load_config(args.config)
         
-        main_logger.info(f"Configuration loaded from: {args.config or 'defaults'}")
+        main_logger.info(f"Configuration loaded from: {args.config}")
         
         # Override output if specified
         if args.output:

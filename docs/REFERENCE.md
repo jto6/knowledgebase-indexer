@@ -350,11 +350,15 @@ On re-run, each existing card is classified:
 ## 5. The `kbi` Indexer and Catalog Config (catalog-side)
 
 `kbi` discovers files, computes a render-independent index model, and emits it
-through a renderer. Run it with a config:
+through a renderer. The config path is a **required positional argument**:
 
 ```
-python3 kbi.py --config <config.yml>
+python3 kbi.py <config.yml>
 ```
+
+There is no default-config fallback — a run without a config errors out. Use
+`python3 kbi.py --sample-config` to scaffold a starter `kbi.yml`, and
+`--output <path>` to override `output.file`.
 
 ### 5.1 Config schema
 

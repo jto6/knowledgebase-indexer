@@ -142,7 +142,7 @@ types:
 
 ```bash
 cd ~/dev/kbi
-python3 kbi.py --config configs/catalog.yml
+python3 kbi.py configs/catalog.yml
 #   → ~/dev/kb/index/<domain>.md  (one index per domain) + INDEX.md
 ```
 
@@ -163,7 +163,7 @@ types:
 ```
 
 ```bash
-python3 kbi.py --config configs/catalog-mm.yml      # → /home/jon/dev/kb/catalog.mm
+python3 kbi.py configs/catalog-mm.yml      # → /home/jon/dev/kb/catalog.mm
 ```
 
 Open `catalog.mm` in Freeplane to browse the File System, Tag, and Word index
@@ -214,4 +214,4 @@ up the directory tree).
 | Never split a dense file     | `card_split: never` in `kb.yml`              |
 | Split deeper / cap the count | `/kb-card -density fine <file>` / `-cards N` |
 | Re-segment a changed source  | `/kb-card -resegment <file>`                 |
-| Build the catalog            | `python3 kbi.py --config <catalog.yml>`      |
+| Build the catalog            | `python3 kbi.py <catalog.yml>`               |

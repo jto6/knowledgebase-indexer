@@ -182,15 +182,13 @@ class TestConfigLoader:
         with pytest.raises(Exception):  # Should raise YAML parsing error
             loader.load_config(str(config_file))
     
-    def test_load_no_config_returns_defaults(self):
-        """Test that loading without config file returns defaults."""
+    def test_load_no_config_raises(self, tmp_path, monkeypatch):
+        """A config is required: no path and nothing discoverable -> error."""
+        monkeypatch.chdir(tmp_path)            # isolated cwd with no kbi.yml
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)  # no ~/.config/kbi
         loader = ConfigLoader()
-        config = loader.load_config()  # No config file
-        
-        # Should get default config
-        assert 'directories' in config
-        assert 'output' in config
-        assert config['output']['file'] == 'index.mm'
+        with pytest.raises(ValueError, match="No configuration file"):
+            loader.load_config()  # No config file provided or discovered
 
 
 @pytest.mark.quick

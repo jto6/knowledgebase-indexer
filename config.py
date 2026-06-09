@@ -55,11 +55,13 @@ class ConfigLoader:
     def load_config(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         """Load and validate configuration."""
         discovered_path = self.discover_config(config_path)
-        
+
         if not discovered_path:
-            # Return default configuration
-            return self._get_default_config()
-        
+            raise ValueError(
+                "No configuration file provided or discovered. Pass a config "
+                "path (run `kbi.py --sample-config` to scaffold one)."
+            )
+
         with open(discovered_path, 'r') as f:
             if discovered_path.endswith(('.yml', '.yaml')):
                 config = yaml.safe_load(f)

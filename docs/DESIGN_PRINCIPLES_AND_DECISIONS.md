@@ -238,6 +238,18 @@ Each decision records the choice and why; supersessions are noted in the addenda
   config produced the file (the configured `output.file` is still excluded
   separately as a cheap belt-and-suspenders). Transition: pre-marker outputs are
   not recognised until regenerated once with marker-writing code. (P9)
+- **D19 — The config path is a required positional argument; no default-config
+  fallback.** In practice every real run supplies a config, and the old optional
+  `--config` plus a built-in default that silently indexed the current directory
+  (`src/`, `docs/`, `.`) was a footgun — a bare `kbi.py` did something unexpected.
+  The config is now a positional (`kbi.py <config.yml>`), and `load_config` raises
+  rather than returning defaults when nothing is provided or discovered. The
+  utility modes `--sample-config`/`--sample-keywords` (write a template and exit)
+  still need no config, so the positional is `nargs='?'` with a post-parse "config
+  required" check that runs only for an actual indexing run. `_get_default_config`
+  is retained — it is the merge base for `_merge_with_defaults`, not a standalone
+  fallback. Config auto-discovery (`./configs/kbi.yml`, `~/.config/kbi/…`) remains
+  for library use. (P-usability)
 
 ## 5. Card Schema (current)
 
