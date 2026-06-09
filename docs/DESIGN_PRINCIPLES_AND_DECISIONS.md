@@ -191,7 +191,10 @@ Each decision records the choice and why; supersessions are noted in the addenda
   build wrongly let the *format* pick the model (freeplane→four views,
   markdown→card records). **Domain** partitions the model, conditionally: a `none`
   bucket holds domainless files when some files have a domain, and the partition
-  layer is absent when no file does. A non-card file's domain is the nearest
+  layer is absent when no file does. Partitioning is overridable via
+  `output.partition_by_domain` (`auto|on|off`) — `off` forces a single flat index
+  (e.g. a deep index incidentally spanning a domained tree). A non-card file's
+  domain is the nearest
   `kb.yml` domain (kbi reads `kb.yml` only for that one field). Every view is a
   **key → file-location** mapping — no content duplication; the content lives in
   the linked file, read on open. Views: File System, Keyword, Word (generic), Tag

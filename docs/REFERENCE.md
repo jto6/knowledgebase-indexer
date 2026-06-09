@@ -365,6 +365,10 @@ python3 kbi.py --config <config.yml>
   output **directory** for the index files.
 - `output.format` — `freeplane` (default) or `markdown`. Selects *only*
   serialization; both formats render the same model (D16).
+- `output.partition_by_domain` — `auto | on | off` (default `auto`): partition the
+  index by domain if any file has one (`auto`), always (`on`), or never — a single
+  flat index (`off`). Use `off` for a general/deep index that incidentally spans a
+  domained tree.
 - `output.views` — optional per-view emission map; each of `file_system`,
   `keyword`, `tag`, `word`, `dependencies`, `glossary` is `auto | on | off`
   (default `auto`; see §5.3).

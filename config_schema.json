@@ -47,6 +47,10 @@
           "enum": ["freeplane", "markdown"],
           "default": "freeplane"
         },
+        "partition_by_domain": {
+          "enum": ["auto", "on", "off"],
+          "description": "Partition the index by domain: auto (if any file has a domain) | on | off."
+        },
         "views": {
           "type": "object",
           "description": "Per-view emission override: auto (renderer default) | on | off.",

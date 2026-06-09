@@ -431,8 +431,13 @@ class KnowledgebaseIndexer:
                 any_domain = True
             file_domain[fp] = dom
 
+        # Whether to partition by domain: auto (partition iff any file has a
+        # domain) | on (always) | off (never — a single flat index).
+        setting = (self.config.get('output', {}) or {}).get('partition_by_domain', 'auto')
+        partitioned = True if setting == 'on' else False if setting == 'off' else any_domain
+
         def bucket(dom):
-            if not any_domain:
+            if not partitioned:
                 return None
             return dom if dom else NONE_DOMAIN
 
@@ -448,7 +453,7 @@ class KnowledgebaseIndexer:
             if rec.get('id'):
                 card_by_key[str(rec['id'])] = rec
 
-        model = IndexModel(partitioned=any_domain)
+        model = IndexModel(partitioned=partitioned)
         for name, bfiles in buckets.items():
             di = DomainIndex(name=name, files=bfiles)
             di.file_system = self.build_file_system_index(bfiles, handlers)

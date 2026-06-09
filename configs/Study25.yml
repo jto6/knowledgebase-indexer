@@ -20,6 +20,9 @@ keywords:
 output:
   file: "index.mm"
   format: "freeplane"
+  # This is a deep, general mind-map index of mixed trees; keep it flat even
+  # though SDV-research carries a domain (its kb.yml) that would otherwise split it.
+  partition_by_domain: off
 
 file_types:
   freeplane:

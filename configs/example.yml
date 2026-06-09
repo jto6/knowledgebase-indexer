@@ -17,6 +17,7 @@ keywords:
 output:
   file: "index.mm"          # for format: markdown this is the output *directory*
   format: "freeplane"       # freeplane (.mm) | markdown (per-domain index files)
+  partition_by_domain: auto # auto (split by domain if any file has one) | on | off
   # Per-view emission. Each view is auto | on | off. `auto` is the renderer
   # default: every view is include-if-it-has-data, except `word`, which defaults
   # ON for freeplane and OFF for markdown. Override here to force a view:

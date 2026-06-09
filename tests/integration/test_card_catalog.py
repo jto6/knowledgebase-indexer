@@ -168,6 +168,29 @@ class TestMarkdownIndex:
         index = (out / "INDEX.md").read_text()
         assert "## File System" in index and "## Domains" not in index
 
+    def test_partition_off_forces_flat_despite_domains(self, temp_dir):
+        _build_cards(temp_dir)  # cards carry domains
+        out = temp_dir / "catalog"
+        cfg = _md_config(temp_dir, out)
+        cfg["output"]["partition_by_domain"] = "off"
+        KnowledgebaseIndexer(cfg).run()
+        assert {p.name for p in out.iterdir()} == {"INDEX.md"}      # no per-domain files
+        index = (out / "INDEX.md").read_text()
+        assert "## File System" in index and "## Domains" not in index
+
+    def test_partition_on_forces_partition_without_domains(self, temp_dir):
+        (temp_dir / "a.md").write_text("# A\n\nx\n", encoding="utf-8")  # no domain
+        out = temp_dir / "catalog"
+        cfg = {
+            "directories": {"include": [str(temp_dir)], "exclude": []},
+            "keywords": {"files": []},
+            "output": {"file": str(out), "format": "markdown", "partition_by_domain": "on"},
+            "file_types": {"markdown": {"extensions": [".md"], "handler": "MarkdownHandler"}},
+        }
+        KnowledgebaseIndexer(cfg).run()
+        assert (out / "none.md").exists()
+        assert "[none](none.md)" in (out / "INDEX.md").read_text()
+
 
 @pytest.mark.integration
 class TestFreeplaneModel:
