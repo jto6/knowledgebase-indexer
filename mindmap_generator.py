@@ -112,8 +112,93 @@ class FreeplaneMapGenerator:
             f.write(xml_content)
         
         return str(self.output_path)
-    
-    def _create_file_system_index(self, parent: ET.Element, 
+
+    def render_model(self, model, config: Dict[str, Any]) -> str:
+        """Render the unified index model (D16).
+
+        Domains partition the top level when present; otherwise the views render
+        directly under the root, byte-identical to the unpartitioned behavior.
+        Each non-empty, non-suppressed view becomes a branch.
+        """
+        root = ET.Element('map', {'version': 'freeplane 1.12.1'})
+        main_root = ET.SubElement(root, 'node', {
+            'ID': self._generate_unique_id(),
+            'CREATED': get_current_timestamp(),
+            'MODIFIED': get_current_timestamp(),
+            'TEXT': 'Navigation Index'
+        })
+
+        if model.partitioned:
+            for name, di in model.ordered_domains():
+                dom_node = ET.SubElement(main_root, 'node', {
+                    'ID': self._generate_unique_id(),
+                    'CREATED': get_current_timestamp(),
+                    'MODIFIED': get_current_timestamp(),
+                    'TEXT': f'Domain: {name}'
+                })
+                self._render_domain_views(dom_node, di, config)
+        else:
+            di = model.domains.get(None)
+            if di is not None:
+                self._render_domain_views(main_root, di, config)
+
+        xml_content = self._prettify_xml(root)
+        with open(self.output_path, 'w', encoding='utf-8') as f:
+            f.write(xml_content)
+        return str(self.output_path)
+
+    def _render_domain_views(self, parent: ET.Element, di, config: Dict[str, Any]):
+        """Render every non-empty, non-suppressed view for one domain under `parent`."""
+        from index_model import (view_enabled, VIEW_FILE_SYSTEM, VIEW_KEYWORD,
+                                 VIEW_TAG, VIEW_WORD, VIEW_DEPENDENCIES, VIEW_GLOSSARY)
+        r = 'freeplane'
+        if di.file_system and view_enabled(config, VIEW_FILE_SYSTEM, r):
+            self._create_file_system_index(parent, di.file_system)
+        if di.keyword_entries and view_enabled(config, VIEW_KEYWORD, r):
+            self._create_keyword_index(parent, di.keyword_entries)
+        if di.tags and view_enabled(config, VIEW_TAG, r):
+            self._create_tag_index(parent, di.tags)
+        if di.words and view_enabled(config, VIEW_WORD, r):
+            self._create_word_index(parent, di.words)
+        if di.dependencies and view_enabled(config, VIEW_DEPENDENCIES, r):
+            self._create_dependencies_index(parent, di.dependencies)
+        if di.glossary and view_enabled(config, VIEW_GLOSSARY, r):
+            self._create_glossary_index(parent, di.glossary)
+
+    def _linked_node(self, parent: ET.Element, text: str, link: str = None) -> ET.Element:
+        """A node with TEXT and an optional LINK (relative to cwd when possible)."""
+        attrs = {
+            'ID': self._generate_unique_id(),
+            'CREATED': get_current_timestamp(),
+            'MODIFIED': get_current_timestamp(),
+            'TEXT': text,
+        }
+        if link:
+            try:
+                attrs['LINK'] = str(Path(link).relative_to(Path.cwd()))
+            except ValueError:
+                attrs['LINK'] = str(link)
+        return ET.SubElement(parent, 'node', attrs)
+
+    def _create_dependencies_index(self, parent: ET.Element, dependencies) -> ET.Element:
+        """Dependencies view: each card → links to the cards it builds on."""
+        dep_root = self._linked_node(parent, 'Dependencies')
+        for rec, targets in sorted(dependencies, key=lambda d: (d[0].get('title') or '').lower()):
+            label = rec.get('title') or Path(rec.get('file_path', '')).name
+            card_node = self._linked_node(dep_root, label, rec.get('file_path'))
+            for tlabel, tpath in targets:
+                self._linked_node(card_node, f'builds on: {tlabel}', tpath)
+        return dep_root
+
+    def _create_glossary_index(self, parent: ET.Element, glossary) -> ET.Element:
+        """Glossary view: defined term → link to its defining card."""
+        gloss_root = self._linked_node(parent, 'Glossary')
+        for term in sorted(glossary, key=str.lower):
+            rec = glossary[term]
+            self._linked_node(gloss_root, f'{term} — {rec.get("title") or ""}', rec.get('file_path'))
+        return gloss_root
+
+    def _create_file_system_index(self, parent: ET.Element,
                                 file_system_index: Dict[str, List[HierarchicalNode]]) -> ET.Element:
         """Create file system navigation index."""
         fs_root = ET.SubElement(parent, 'node', {

@@ -34,7 +34,7 @@ from handlers.card_handler import CardHandler
 from search import HierarchicalSearchEngine, SearchResultAggregator
 from keywords import load_keyword_files, KeywordProcessor
 from mindmap_generator import FreeplaneMapGenerator
-from markdown_slice_renderer import MarkdownSliceRenderer
+from markdown_renderer import MarkdownIndexRenderer
 from word_filter import SignificantWordFilter
 from logging_config import AppLogger, LoggedOperation, create_component_logger
 
@@ -422,92 +422,107 @@ class KnowledgebaseIndexer:
         
         return result_path
     
+    def build_index_model(self, files: List[str], handlers: Dict[str, Any]):
+        """Build the unified, domain-partitioned index model (D16).
+
+        Resolves each file's domain (card frontmatter → nearest kb.yml → none),
+        partitions files by domain (a single unpartitioned bucket when no file has
+        a domain), and computes every view per partition. Card-only views
+        (dependencies, glossary) are populated from card records.
+        """
+        from index_model import IndexModel, DomainIndex, resolve_domain, NONE_DOMAIN
+
+        card_records: Dict[str, Dict[str, Any]] = {}
+        file_domain: Dict[str, Any] = {}
+        any_domain = False
+        for fp in files:
+            handler = handlers.get(fp)
+            rec = None
+            if isinstance(handler, CardHandler):
+                try:
+                    rec = handler.get_card_record(fp)
+                    card_records[fp] = rec
+                except Exception as e:
+                    if self.debug:
+                        print(f"Error reading card {fp}: {e}")
+            dom = resolve_domain(fp, rec)
+            if dom:
+                any_domain = True
+            file_domain[fp] = dom
+
+        def bucket(dom):
+            if not any_domain:
+                return None
+            return dom if dom else NONE_DOMAIN
+
+        buckets: Dict[Any, List[str]] = {}
+        for fp in files:
+            buckets.setdefault(bucket(file_domain[fp]), []).append(fp)
+
+        # slug/id → record, for cross-domain dependency resolution
+        card_by_key: Dict[str, Dict[str, Any]] = {}
+        for rec in card_records.values():
+            if rec.get('slug'):
+                card_by_key[str(rec['slug'])] = rec
+            if rec.get('id'):
+                card_by_key[str(rec['id'])] = rec
+
+        model = IndexModel(partitioned=any_domain)
+        for name, bfiles in buckets.items():
+            di = DomainIndex(name=name, files=bfiles)
+            di.file_system = self.build_file_system_index(bfiles, handlers)
+            di.keyword_entries = self.process_keyword_searches(bfiles, handlers)
+            di.tags = self.extract_tags(bfiles, handlers)
+            di.words = self.extract_significant_words(bfiles, handlers)
+            for fp in bfiles:
+                rec = card_records.get(fp)
+                if not rec:
+                    continue
+                for term in (rec.get('defines') or []):
+                    di.glossary[str(term)] = rec
+                deps = rec.get('builds_on') or []
+                if deps:
+                    targets = [(card_by_key[str(r)]['title'] if str(r) in card_by_key else str(r),
+                                card_by_key.get(str(r), {}).get('file_path'))
+                               for r in deps]
+                    di.dependencies.append((rec, targets))
+            model.domains[name] = di
+        return model
+
     def run(self) -> str:
-        """Run the complete index generation process."""
+        """Discover files, build the unified model, and render it.
+
+        `output.format` selects only the renderer; the model is always the full
+        superset (D16).
+        """
         try:
             if self.debug:
                 print("=== Index Generation Process ===")
-            
-            # 1. Discover files
             files = self.discover_files()
             if not files:
                 raise ValueError("No files found matching the configured patterns")
-            
-            # 2. Create handlers
             handlers = self.create_file_handlers(files)
             if not handlers:
                 raise ValueError("No valid handlers found for discovered files")
-            
-            # Only process files that have handlers
             valid_files = list(handlers.keys())
 
-            # Renderer dispatch: the markdown renderer is card-centric (per-domain
-            # slices from card records), not the FS/keyword/word model the .mm
-            # renderer consumes, so it has its own short pipeline.
-            output_format = self.config['output'].get('format', 'freeplane')
-            if output_format == 'markdown':
-                return self._render_markdown_slices(valid_files, handlers)
+            if self.debug:
+                print("\n=== Building Index Model ===")
+            model = self.build_index_model(valid_files, handlers)
 
-            # 3. Build file system index
+            output_format = self.config['output'].get('format', 'freeplane')
             if self.debug:
-                print("\n=== Building File System Index ===")
-            file_system_index = self.build_file_system_index(valid_files, handlers)
-            
-            # 4. Process keyword searches
-            if self.debug:
-                print("\n=== Processing Keyword Searches ===")
-            keyword_entries = self.process_keyword_searches(valid_files, handlers)
-            
-            # 5. Extract tags
-            if self.debug:
-                print("\n=== Extracting Tags ===")
-            tag_results = self.extract_tags(valid_files, handlers)
-            
-            # 6. Extract significant words
-            if self.debug:
-                print("\n=== Extracting Significant Words ===")
-            word_results = self.extract_significant_words(valid_files, handlers)
-            
-            # 7. Generate mind map
-            if self.debug:
-                print("\n=== Generating Mind Map ===")
-            output_path = self.generate_mind_map(file_system_index, keyword_entries, tag_results, word_results)
-            
-            return output_path
-        
+                print(f"\n=== Rendering ({output_format}) ===")
+            if output_format == 'markdown':
+                return MarkdownIndexRenderer(self.config).render_model(model)
+            generator = FreeplaneMapGenerator(self.config['output']['file'])
+            return generator.render_model(model, self.config)
+
         except Exception as e:
             if self.debug:
                 print(f"Error during index generation: {e}")
                 traceback.print_exc()
             raise
-
-    def collect_card_records(self, files: List[str], handlers: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Gather card records from files handled by the CardHandler."""
-        records = []
-        for file_path in files:
-            handler = handlers.get(file_path)
-            if isinstance(handler, CardHandler):
-                try:
-                    records.append(handler.get_card_record(file_path))
-                except Exception as e:
-                    if self.debug:
-                        print(f"Error reading card {file_path}: {e}")
-        return records
-
-    def _render_markdown_slices(self, files: List[str], handlers: Dict[str, Any]) -> str:
-        """Render per-domain Markdown slices (the Claude-facing catalog view)."""
-        if self.debug:
-            print("\n=== Rendering Markdown Slices ===")
-        records = self.collect_card_records(files, handlers)
-        if not records:
-            raise ValueError("No card (*.kb.md) files found for markdown slice output")
-        output_dir = self.config['output']['file']
-        written = MarkdownSliceRenderer(output_dir).render(records)
-        if self.debug:
-            print(f"Wrote {len(written)} slice file(s) to {output_dir}")
-            for path in written:
-                print(f"  {path}")
-        return output_dir
 
 
 def main():

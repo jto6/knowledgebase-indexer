@@ -15,8 +15,18 @@ keywords:
     - "/home/jon/TIGoogleDrive/MyMaps/.kw.mmtxt"
 
 output:
-  file: "index.mm"
-  format: "freeplane"
+  file: "index.mm"          # for format: markdown this is the output *directory*
+  format: "freeplane"       # freeplane (.mm) | markdown (per-domain index files)
+  # Per-view emission. Each view is auto | on | off. `auto` is the renderer
+  # default: every view is include-if-it-has-data, except `word`, which defaults
+  # ON for freeplane and OFF for markdown. Override here to force a view:
+  views:
+    word: off               # e.g. keep the .mm small by dropping the word index
+    # file_system: on
+    # keyword: on
+    # tag: off
+    # dependencies: on
+    # glossary: on
 
 file_types:
   freeplane:

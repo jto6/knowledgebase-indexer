@@ -16,6 +16,8 @@ keywords:
 output:
   file: "/tmp/bsfl_deep_index.mm"
   format: "freeplane"
+  views:
+    word: off        # drop the verbose word index to keep the .mm small
 
 file_types:
   freeplane:

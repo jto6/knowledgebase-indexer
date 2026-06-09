@@ -46,6 +46,19 @@
           "type": "string",
           "enum": ["freeplane", "markdown"],
           "default": "freeplane"
+        },
+        "views": {
+          "type": "object",
+          "description": "Per-view emission override: auto (renderer default) | on | off.",
+          "additionalProperties": false,
+          "properties": {
+            "file_system": {"enum": ["auto", "on", "off"]},
+            "keyword": {"enum": ["auto", "on", "off"]},
+            "tag": {"enum": ["auto", "on", "off"]},
+            "word": {"enum": ["auto", "on", "off"]},
+            "dependencies": {"enum": ["auto", "on", "off"]},
+            "glossary": {"enum": ["auto", "on", "off"]}
+          }
         }
       }
     },

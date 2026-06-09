@@ -16,8 +16,12 @@ keywords:
   files: []
 
 output:
-  file: "/home/jon/dev/kb/index"
+  file: "/home/jon/dev/kb/index"   # markdown → an output directory of index files
   format: "markdown"
+  # Optional per-view overrides (auto|on|off). markdown defaults: word index off.
+  # views:
+  #   word: on      # include the (verbose) word index in the markdown catalog
+  #   tag: off      # suppress the tag index
 
 file_types:
   card:
