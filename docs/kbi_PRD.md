@@ -19,11 +19,15 @@ renderer materializes those concepts in its own form.
 - **Freeplane `.mm`** — the reference renderer (a navigable mind map). Renderer-
   specific requirements live in §2.5 and in Part II §4. This is the only renderer
   the original implementation targeted, and the default today.
-- **Markdown** — a planned renderer producing a compact, greppable, Claude-facing
-  index (and per-domain slices). See `DESIGN_PRINCIPLES_AND_DECISIONS.md`.
+- **Markdown** — a Claude-facing renderer producing a per-domain navigational
+  index (`INDEX.md` + `<domain>.md` files) of key→file-location links.
 
-Renderers are additive over one shared index model (one model, many renderers);
-adding a renderer must not require changing the model or the view requirements.
+Both renderers serialize one shared model, partitioned by domain, whose views
+include the four below plus the card-only Dependencies and Glossary views; view
+emission is configurable (`output.views`). `output.format` selects only the
+serialization. See `DESIGN_PRINCIPLES_AND_DECISIONS.md` (D16) for the model,
+domain partitioning, and per-view emission, which supersede the format-specific
+phrasing in the requirements below.
 
 ## 2. Functional Requirements
 

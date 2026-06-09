@@ -184,6 +184,25 @@ Each decision records the choice and why; supersessions are noted in the addenda
   architectural change; a cheap transcript-reference heuristic warns when a
   transcript-only capture is likely lossy. (P1, P3, P5) — see Addendum G; this
   also absorbs the residual `/kb-import` role (D11, Addendum D).
+- **D16 — `output.format` selects only serialization; the model is one superset,
+  partitioned by domain.** Handlers populate a single render-independent model
+  (the superset of what they can encode); a renderer emits *every* non-empty,
+  non-suppressed view in its format. This realigns the code with P9 — the prior
+  build wrongly let the *format* pick the model (freeplane→four views,
+  markdown→card records). **Domain** partitions the model, conditionally: a `none`
+  bucket holds domainless files when some files have a domain, and the partition
+  layer is absent when no file does. A non-card file's domain is the nearest
+  `kb.yml` domain (kbi reads `kb.yml` only for that one field). Every view is a
+  **key → file-location** mapping — no content duplication; the content lives in
+  the linked file, read on open. Views: File System, Keyword, Word (generic), Tag
+  (freeplane node-tags or card frontmatter), and the card-only Dependencies
+  (`builds_on`) and Glossary (`defines`). Emission is governed by
+  `output.views.<view>: auto|on|off` (default include-if-data, except the word
+  index — verbose and redundant for agents that can grep — which defaults on for
+  freeplane, off for markdown). Freeplane serializes views as branches (domains at
+  the top); markdown writes `INDEX.md` plus one `<domain>.md` per domain (or views
+  inlined into `INDEX.md` when unpartitioned), each led by a file-type-agnostic
+  how-to header. (P9) — see §7.
 
 ## 5. Card Schema (current)
 

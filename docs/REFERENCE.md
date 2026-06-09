@@ -360,10 +360,14 @@ python3 kbi.py --config <config.yml>
 
 - `directories.include` — list of root paths to scan (the registry of indexed
   repos). `directories.exclude` — glob patterns to prune.
-- `keywords.files` — optional keyword files (mind-map renderer only).
+- `keywords.files` — optional keyword files driving the Keyword view.
 - `output.file` — for `freeplane`, the `.mm` output file; for `markdown`, the
-  output **directory** for slices.
-- `output.format` — `freeplane` (default) or `markdown`.
+  output **directory** for the index files.
+- `output.format` — `freeplane` (default) or `markdown`. Selects *only*
+  serialization; both formats render the same model (D16).
+- `output.views` — optional per-view emission map; each of `file_system`,
+  `keyword`, `tag`, `word`, `dependencies`, `glossary` is `auto | on | off`
+  (default `auto`; see §5.3).
 - `file_types` — map of enabled types; each has `extensions` and `handler`. **An
   explicit `file_types` replaces the defaults** (it does not merge), so the set of
   enabled types defines the index scope.
@@ -377,17 +381,43 @@ python3 kbi.py --config <config.yml>
 - **Precedence:** when more than one type matches, the **longest matching
   extension wins**, so `.kb.md` is always handled by `CardHandler` over `.md`.
 
-### 5.3 Renderers
+### 5.3 The index model and views
 
-- `freeplane` — a Freeplane `.mm` mind map (the human navigation view). Branches:
-  File System, Keyword, Tag, Word.
-- `markdown` — per-domain **slices**: one `<domain>.md` per domain plus an
-  `INDEX.md` overview, written into the output directory. Each slice lists, per
-  card: title, essence, tags, `builds_on` (resolved to titles), `defines`, card
-  path, and source; plus a domain-local tag index and a glossary (defined term →
-  card).
+`kbi` builds one model from whatever the handlers extract, then a renderer
+serializes it; `output.format` chooses *only* the serialization (D16). The model
+is **partitioned by domain** — a file's domain is its card frontmatter `domain`,
+else the nearest `kb.yml` domain, else none. Partitioning is conditional: a `none`
+bucket holds domainless files when *some* files have a domain; the partition layer
+is absent when *no* file does.
 
-### 5.4 Catalog config example
+Within each domain, every **view** is a *key → file-location* mapping — a
+navigational index that links to files, it does not contain their content (open a
+linked file to read it):
+
+- **File System** — directory tree → file links.
+- **Word** — significant word → file links.
+- **Keyword** — keyword hierarchy (from `keywords.files`) → file links.
+- **Tag** — tag → file links (freeplane node-tags or card frontmatter tags).
+- **Dependencies** — card → links to the cards it `builds_on` (cards only).
+- **Glossary** — defined term → link to its defining card (cards only).
+
+A leaf links to the indexed file (`LINK` in freeplane, `[label](<path>)` in
+markdown), labeled by the card title (for `.kb.md`) or the filename.
+
+**Emission** is controlled by `output.views.<view>` (`auto|on|off`). `auto` is the
+renderer default: include-if-data for every view, **except** the word index, which
+defaults **on for freeplane** and **off for markdown** (it is verbose, and an agent
+can grep instead).
+
+### 5.4 Renderer output structure
+
+- **`freeplane` (`.mm`)** — a `Navigation Index`; when partitioned, a branch per
+  domain, each holding its view branches; when not, the views sit at the root.
+- **`markdown`** — a directory: `INDEX.md` plus one `<domain>.md` per domain (when
+  partitioned), or just `INDEX.md` holding the views (when not). Each file opens
+  with a file-type-agnostic how-to header, then a section per view.
+
+### 5.5 Catalog config example
 
 ```yaml
 directories:
@@ -411,9 +441,11 @@ file_types:
 Consumers (council members, projects, ad-hoc sessions) **subscribe** to a domain
 by referencing its slice — they pull; the KB never pushes.
 
-- **Slice location (convention):** `~/dev/kb/index/<domain>.md`.
-- **Shared protocol once:** the generic retrieval protocol (scan the slice → open
-  1–3 cards → follow `source:` only for depth) lives in the council `CLAUDE.md`.
+- **Index location (convention):** `~/dev/kb/index/<domain>.md` (a per-domain
+  navigational index of links, not content).
+- **Shared protocol once:** the generic retrieval protocol (scan the index by
+  tag / title to find candidate cards → open the linked cards → read their content
+  there) lives in the council `CLAUDE.md`.
 - **Per-member subscription:** each member's `CLAUDE.md` declares only *which*
   slice(s) it subscribes to. Because `CLAUDE.md` loads up the directory tree, a
   member-only session inherits the shared protocol automatically.

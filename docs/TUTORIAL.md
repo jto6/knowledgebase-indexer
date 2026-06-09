@@ -8,7 +8,7 @@ A quick, example-driven getting-started guide. It is not exhaustive — see
 - **Author cards** with `/kb-card` *inside a content repo*. Cards live in `.kb/`
   folders and are committed with that repo.
 - **Build the catalog** with `kbi` (run separately). It reads cards read-only and
-  writes per-domain *slices* that consumers read.
+  writes a per-domain navigational **index** that consumers read.
 
 This guide follows those two sides: first creating and maintaining cards, then
 building and using the catalog.
@@ -143,11 +143,12 @@ file_types:
 ```bash
 cd ~/dev/kbi
 python3 kbi.py --config configs/catalog.yml
-#   → ~/dev/kb/index/<domain>.md  (one slice per domain) + INDEX.md
+#   → ~/dev/kb/index/<domain>.md  (one index per domain) + INDEX.md
 ```
 
-Open a slice (e.g. `~/dev/kb/index/spiritual.md`) to see each card's title,
-essence, tags, `builds_on`, `defines`, and path — the index a consumer scans.
+Open a domain index (e.g. `~/dev/kb/index/spiritual.md`) — a **navigational index**
+of links, not content. Scan its File System / Tags sections to find candidate
+cards, then open the linked cards to read their concepts.
 
 #### Or render a mind map instead
 
@@ -192,8 +193,8 @@ The retrieval protocol is shared once; each member just declares its slice.
 <!-- advisor/CLAUDE.md (shared, once) -->
 ## Knowledge Base Access
 Slice location: /home/jon/dev/kb/index/<domain>.md
-Protocol: scan the slice → open the 1–3 relevant cards → follow `source:` only
-for full detail.
+Protocol: scan the index by tag/title → open the 1–3 linked cards → read their
+content (follow a card's `source:` only for the original).
 ```
 
 ```markdown
