@@ -117,8 +117,8 @@ class FileHandler(ABC):
         link_format = self.link_config.get('format', '{path}')
         supports_fragments = self.link_config.get('supports_fragments', False)
         
-        # Convert to relative path
-        rel_path = Path(file_path).relative_to(Path.cwd())
+        # Convert to relative path (resolve both to handle macOS /var vs /private/var symlinks)
+        rel_path = Path(file_path).resolve().relative_to(Path.cwd().resolve())
         
         if supports_fragments and node_id:
             return link_format.format(path=str(rel_path), fragment=node_id, anchor=node_id)
