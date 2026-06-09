@@ -13,7 +13,7 @@ A Python implementation of the Knowledgebase Indexer that builds navigational in
 ## Documentation
 
 - `docs/TUTORIAL.md` — getting-started, example-driven walkthrough of each use case
-- `docs/REFERENCE.md` — full reference: meta-file schemas (card / `kb.yml` / `cards.yml`), the `/kb-card` command, and the catalog config
+- `docs/REFERENCE.md` — full reference: meta-file schemas (card / `kb.yml` / `segmentation.yml`), the `/kb-card` command, and the catalog config
 - `docs/DESIGN_PRINCIPLES_AND_DECISIONS.md` — architecture, principles, and the rationale behind the decisions
 - `docs/kbi_PRD.md` — the indexer engine requirements
 

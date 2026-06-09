@@ -72,11 +72,32 @@ ALL_VIEWS = [VIEW_FILE_SYSTEM, VIEW_KEYWORD, VIEW_TAG, VIEW_WORD,
 
 
 @dataclass
+class CardGroup:
+    """FS-view grouping of cards that share a source.
+
+    Each entry in `DomainIndex.card_groups` is keyed by the resolved absolute
+    source path (file or directory) and holds:
+    - annotation: the one-line essence to annotate the source node with (empty
+      string = no annotation).
+    - hidden_card: path of the `kind: file_summary` card whose essence is the
+      annotation and which the renderer must NOT render as a leaf. None when
+      the annotation came from a lone topic card (topic cards are always
+      rendered as leaves even when they supply the annotation).
+    - cards: list of (label, card_path) tuples for ALL cards (including the
+      file_summary card if any). Renderers filter out `hidden_card`.
+    """
+    annotation: str = ""
+    hidden_card: Optional[str] = None    # absolute path of file_summary card to suppress
+    cards: List[tuple] = field(default_factory=list)   # [(label, card_path)]
+
+
+@dataclass
 class DomainIndex:
     """All views for one domain partition (or the single unpartitioned bucket)."""
     name: Optional[str]                                  # domain, NONE_DOMAIN, or None (unpartitioned)
     files: List[str] = field(default_factory=list)
-    file_system: Dict[str, list] = field(default_factory=dict)   # file -> root nodes
+    file_system: Dict[str, list] = field(default_factory=dict)   # file -> root nodes (non-card files)
+    card_groups: Dict[str, CardGroup] = field(default_factory=dict)  # source_path -> CardGroup
     keyword_entries: list = field(default_factory=list)
     tags: Dict[str, list] = field(default_factory=dict)          # tag -> [(file, node_id, label)]
     words: Dict[str, dict] = field(default_factory=dict)         # word -> {file: matches}

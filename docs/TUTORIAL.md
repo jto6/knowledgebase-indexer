@@ -28,7 +28,7 @@ seed_tags: [faith, grace, discipleship]
 
 ## Part 1 — Creating and maintaining cards
 
-Author-side: run `/kb-card` inside the content repo; cards and `cards.yml` are
+Author-side: run `/kb-card` inside the content repo; cards and `segmentation.yml` are
 committed there.
 
 ### Authoring is one command — the tool adapts to the content
@@ -88,7 +88,7 @@ area's `kb.yml` (applies to the subtree) or pass a flag:
 - **Set the depth** — `card_density: coarse|normal|fine|exhaustive`, or per run
   `-density fine`; cap with `-cards N` (a **maximum**, never a quota — it will not
   invent topics to reach N).
-- **Review before authoring** — `-plan` proposes the segmentation into `cards.yml`
+- **Review before authoring** — `-plan` proposes the segmentation into `segmentation.yml`
   and stops. Edit it (merge / split / relabel, or add a `density_overrides` entry
   to go deeper on one section), then run without `-plan` to author.
 
@@ -100,7 +100,7 @@ card_split: never        # one card per report, even the dense multi-topic ones
 ```
 
 ```bash
-/kb-card -plan Hypervisor_Technologies.md          # propose the split; review cards.yml
+/kb-card -plan Hypervisor_Technologies.md          # propose the split; review segmentation.yml
 /kb-card -density fine Hypervisor_Technologies.md  # deeper: ~ one card per section
 /kb-card -cards 8 Hypervisor_Technologies.md       # at most 8 cards (never pads to 8)
 ```
@@ -108,7 +108,7 @@ card_split: never        # one card per report, even the dense multi-topic ones
 ### Maintaining cards as content changes
 
 Edit a source, then re-run `/kb-card` over the area; it **reconciles** against
-`cards.yml` and only acts on what changed:
+`segmentation.yml` and only acts on what changed:
 
 ```bash
 /kb-card -r reports/          # refresh drifted cards, re-segment broken

@@ -72,11 +72,41 @@ tags: [gamma]
 """
 
 
+CARD_A_SUMMARY = """---
+id: 00000000-0000-0000-0000-000000000000
+slug: thing-summary
+title: Thing Overview
+source: ../thing.md
+kind: file_summary
+domain: alpha-domain
+tags: [shared-tag]
+---
+
+# Thing Overview
+
+> file-level essence of thing.md
+"""
+
+CARD_LONE = """---
+id: 44444444-4444-4444-4444-444444444444
+slug: card-lone
+title: Lone Card Title
+source: ../lone.md
+domain: alpha-domain
+tags: [shared-tag]
+---
+
+# Lone Card Title
+
+> lone card essence
+"""
+
+
 def _build_cards(root: Path):
     a = root / "area1" / ".kb"; a.mkdir(parents=True)
     (a / "thing.caching.kb.md").write_text(CARD_A, encoding="utf-8")
     (a / "thing.queue.kb.md").write_text(CARD_B, encoding="utf-8")
-    (a / "cards.yml").write_text("version: 1\ncards: []\n", encoding="utf-8")
+    (a / "segmentation.yml").write_text("version: 1\ncards: []\n", encoding="utf-8")
     (a / "kb.yml").write_text("domain: alpha-domain\n", encoding="utf-8")
     (root / "area1" / "thing.md").write_text("# Raw\n\nNot a card.\n", encoding="utf-8")
     b = root / "area2" / ".kb"; b.mkdir(parents=True)
@@ -114,9 +144,11 @@ class TestMarkdownIndex:
         # how-to header, file-system view with title→location links
         assert "Navigational index built by `kbi`" in alpha
         assert "## File System" in alpha
+        # cards grouped under their source file (D21)
+        assert "[thing.md](<" in alpha           # source node present
         assert "[Card A Title](<" in alpha and "thing.caching.kb.md>)" in alpha
         # NO card content is duplicated into the index
-        assert "essence of card A" not in alpha
+        assert "essence of card A" not in alpha  # N=2 → no annotation on source node
         assert "concept a" not in alpha
 
     def test_tag_dependency_glossary_views(self, temp_dir):
@@ -146,7 +178,7 @@ class TestMarkdownIndex:
         KnowledgebaseIndexer(_md_config(temp_dir, out, views={"tag": "off"})).run()
         assert "## Tags" not in (out / "alpha-domain.md").read_text()
 
-    def test_cards_yml_kbyml_raw_ignored(self, temp_dir):
+    def test_segmentation_yml_kbyml_raw_ignored(self, temp_dir):
         _build_cards(temp_dir)
         g = KnowledgebaseIndexer(_md_config(temp_dir, temp_dir / "catalog"))
         files = g.discover_files()
@@ -177,6 +209,51 @@ class TestMarkdownIndex:
         assert {p.name for p in out.iterdir()} == {"INDEX.md"}      # no per-domain files
         index = (out / "INDEX.md").read_text()
         assert "## File System" in index and "## Domains" not in index
+
+    def test_fs_file_summary_card_annotates_source_and_not_a_leaf(self, temp_dir):
+        """kind=file_summary card: essence annotates source node; card itself hidden as leaf (D21)."""
+        a = temp_dir / "area1" / ".kb"; a.mkdir(parents=True)
+        (a / "thing.kb.md").write_text(CARD_A_SUMMARY, encoding="utf-8")   # file_summary
+        (a / "thing.caching.kb.md").write_text(CARD_A, encoding="utf-8")   # topic
+        (a / "thing.queue.kb.md").write_text(CARD_B, encoding="utf-8")     # topic
+        (a / "kb.yml").write_text("domain: alpha-domain\n", encoding="utf-8")
+        out = temp_dir / "catalog"
+        KnowledgebaseIndexer(_md_config(temp_dir, out)).run()
+        alpha = (out / "alpha-domain.md").read_text()
+        fs = alpha.split("## File System", 1)[1].split("##", 1)[0]
+        # source node annotated with file_summary essence
+        assert "thing.md" in fs and "file-level essence of thing.md" in fs
+        # file_summary card NOT rendered as a leaf
+        assert "Thing Overview" not in fs
+        assert "thing.kb.md" not in fs
+        # topic cards ARE rendered as leaves under the source node
+        assert "Card A Title" in fs and "thing.caching.kb.md" in fs
+        assert "Card B Title" in fs and "thing.queue.kb.md" in fs
+
+    def test_fs_lone_topic_card_annotates_source_and_stays_leaf(self, temp_dir):
+        """N=1 topic card: its essence annotates the source node; card still a leaf (D21)."""
+        a = temp_dir / "area1" / ".kb"; a.mkdir(parents=True)
+        (a / "lone.kb.md").write_text(CARD_LONE, encoding="utf-8")
+        (a / "kb.yml").write_text("domain: alpha-domain\n", encoding="utf-8")
+        out = temp_dir / "catalog"
+        KnowledgebaseIndexer(_md_config(temp_dir, out)).run()
+        alpha = (out / "alpha-domain.md").read_text()
+        fs = alpha.split("## File System", 1)[1].split("##", 1)[0]
+        # source node annotated with the lone card's essence
+        assert "lone.md" in fs and "lone card essence" in fs
+        # lone topic card IS still rendered as a leaf
+        assert "Lone Card Title" in fs and "lone.kb.md" in fs
+
+    def test_fs_multi_topic_no_file_summary_no_annotation(self, temp_dir):
+        """N>=2 topic cards, no file_summary: source node has no annotation (D21)."""
+        _build_cards(temp_dir)
+        out = temp_dir / "catalog"
+        KnowledgebaseIndexer(_md_config(temp_dir, out)).run()
+        alpha = (out / "alpha-domain.md").read_text()
+        fs = alpha.split("## File System", 1)[1].split("##", 1)[0]
+        # source node present but no essence annotation
+        assert "thing.md" in fs
+        assert " — " not in fs or "thing.md —" not in fs  # no " — <essence>" on this node
 
     def test_partition_on_forces_partition_without_domains(self, temp_dir):
         (temp_dir / "a.md").write_text("# A\n\nx\n", encoding="utf-8")  # no domain

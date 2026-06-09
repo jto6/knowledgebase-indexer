@@ -33,6 +33,16 @@ except ImportError:  # pragma: no cover - yaml is a declared dependency
 
 CARD_SUFFIX = '.kb.md'
 
+# Card roles. Absent (the default) is a "topic" card; `file_summary` marks the
+# card as the file-level summary for its `source` (D21). The renderer treats a
+# `file_summary` card as the FS-view file-node annotation rather than a leaf.
+KIND_FILE_SUMMARY = 'file_summary'
+
+
+def is_file_summary(card_record: Dict[str, Any]) -> bool:
+    """True iff the card record's frontmatter declares `kind: file_summary`."""
+    return card_record.get('kind') == KIND_FILE_SUMMARY
+
 
 class CardHandler(MarkdownHandler):
     """Handler for distilled knowledge-base cards (`*.kb.md`)."""
@@ -84,9 +94,11 @@ class CardHandler(MarkdownHandler):
     def get_card_record(self, file_path: str) -> Dict[str, Any]:
         """Parse frontmatter + essence into a record for the catalog/slices.
 
-        Carries the card-specific fields (domain, builds_on, defines, meta, ...)
-        that increment B will render as per-domain slices, cross-edges, and a
-        term index. Increment A only consumes `title` and `tags`.
+        Carries the card-specific fields (domain, kind, builds_on, defines,
+        meta, ...) used by per-domain slices, cross-edges, the term index, and
+        the FS-view file-node annotation rule. The optional `kind` field is
+        the card-role discriminator (absent = topic; `file_summary` = the
+        file-level summary card — see `is_file_summary` and D21).
         """
         try:
             content = Path(file_path).read_text(encoding='utf-8')

@@ -158,19 +158,23 @@ Each decision records the choice and why; supersessions are noted in the addenda
   (P2, P7, D9) *(Implemented when wiring the pastor; resolves the §8 slice-home
   question.)*
 - **D14 — Card granularity is adaptive-first with declarative override, and the
-  boundary decisions are persisted per directory in `cards.yml`.** A card should
-  be one cohesive, self-contained, bounded topic — the unit at which distillation
-  stays faithful and retrieval stays precise. Granularity is a *cut* across the
-  source hierarchy (repo → directory → file → section); `/kb-card` *proposes* the
-  cut by content analysis, and the optional `card_unit` / `card_split` /
-  `card_density` keys in `kb.yml` (inherited per subtree) override the proposal
-  where the author wants control, including how *deep* to partition (a `-cards N`
-  ceiling never invents topics to fill a quota), with non-uniform per-section depth
-  recorded in `cards.yml`. Reviewed boundaries are recorded in a per-directory `.kb/cards.yml`
+  boundary decisions are persisted per directory in `segmentation.yml`.** A card
+  should be one cohesive, self-contained, bounded topic — the unit at which
+  distillation stays faithful and retrieval stays precise. Granularity is a
+  *cut* across the source hierarchy (repo → directory → file → section);
+  `/kb-card` *proposes* the cut by content analysis, and the optional
+  `card_unit` / `card_split` / `card_density` keys in `kb.yml` (inherited per
+  subtree) override the proposal where the author wants control, including how
+  *deep* to partition (a `-cards N` ceiling never invents topics to fill a
+  quota), with non-uniform per-section depth recorded in `segmentation.yml`.
+  Reviewed boundaries are recorded in a per-directory `.kb/segmentation.yml`
   manifest (the realized record, not a forward plan); re-runs **reconcile**
   against it — refreshing drifted content, escalating boundaries that no longer
-  resolve, and flagging orphans — so decisions are refined, never redone.
-  (P3, P4) — see §6.4.
+  resolve, and flagging orphans — so decisions are refined, never redone. The
+  manifest is named for what it carries (segmentation state — `scope.signature`,
+  `locked`, `source_hash`, `density`, `density_overrides`); it is *not* a card
+  index (the cards themselves and `ls *.kb.md` already provide that).
+  (P3, P4) — see §6.4. Renamed from `cards.yml` by D21.
 - **D15 — Remote/URL sources are handled by capturing a local text artifact that
   becomes the *operational* source of truth.** A card cannot be co-located with a
   remote source (a YouTube URL has no local home), so `/kb-card <url>` fetches a
@@ -265,6 +269,40 @@ Each decision records the choice and why; supersessions are noted in the addenda
   back to **grep** — passing extra args through to the backend and mirroring its
   exit status. Search is on-demand and current, with nothing pre-materialised.
   The word-index code is retained for the rare opt-in case. (P9, P-usability)
+- **D21 — File-level summary is an opt-in card role (`kind: file_summary`); the
+  segmentation manifest is renamed to `segmentation.yml` and stays out of kbi's
+  read surface.** When a single source produces multiple topic cards, the source
+  as a whole still has an essence the section cards do not individually carry.
+  That essence is captured as a card with frontmatter `kind: file_summary` —
+  same `.kb.md` shape, same handler, same `.kb/` directory — rather than as a
+  manifest entry, sidecar, or a new file type. The renderer recognizes the role
+  from the frontmatter and treats the card as the FS-view file-node annotation
+  (and not as a leaf). Topic cards are the default; file-summary cards are
+  authored only when `kb.yml file_summary` (or `/kb-card -file-summary`)
+  enables it *and* the source produces ≥2 topic cards (a lone topic card's own
+  essence already serves as the file's summary, so no second card is written).
+  Filename: the bare-stem slot `<stem>.kb.md` is reserved for the file-summary
+  card; topic cards alongside one always take `<stem>.<section-slug>.kb.md`.
+  At most one file-summary card per source.
+
+  The companion rename — `cards.yml` → `segmentation.yml` — separates *what the
+  file is* from *what it superficially looked like*. The manifest is not a card
+  index (the cards themselves provide that, plus `ls *.kb.md`); it is the
+  persistent record of segmentation state that has no other home: `scope.signature`,
+  `locked`, `source_hash`, `density`, `density_overrides`. That is also why kbi
+  must not read it: it is `/kb-card`'s process state, not consumed content.
+
+  This decision protects two invariants that earlier drafts threatened to break:
+  **all content kbi consumes lives in `*.kb.md`** (one handler, one file type;
+  no out-of-band lookups into `segmentation.yml`/sidecars/`sources.yml`), and
+  **the manifest stays single-purpose** (segmentation state, never a renderable
+  artifact). Considered and rejected: (a) put a per-source `summary` field in
+  `segmentation.yml` and have kbi read it — violates the handler-only read
+  surface and mixes process state with consumed content; (b) a separate
+  `sources.yml` or `*.summary.md` sidecar — same handler-surface violation and
+  introduces a new file type for one field; (c) auto-generate a file-summary
+  for every multi-card file by default — risks redundant TOC-style cards that
+  add nothing the topic cards don't already say. (P6, P9, D2, D12, D14)
 
 ## 5. Card Schema (current)
 
@@ -272,6 +310,8 @@ Frontmatter:
 
 - `id` (required) — stable UUID; the immortal handle everything resolves to.
 - `slug` (optional, recommended) — readable alias for cross-refs and links.
+- `kind` (optional) — card role. Absent (default) = topic card; `file_summary`
+  = file-level summary card (see D21).
 - `title` (required) — human label.
 - `source` (required) — file, directory, URL, or a list of these; defaults to
   `..` (the directory the `.kb/` sits in) when the card summarizes the whole
@@ -350,6 +390,12 @@ therefore zero-setup; the persisted `kb.yml` means later runs don't re-ask.
 - `card_density` (optional: `coarse` | `normal` | `fine` | `exhaustive`, default
   `normal`) — how *deep* a split goes: how far down the source's section/subsection
   hierarchy the cuts fall (see §6.4).
+- `file_summary` (optional: `auto` | `on` | `off`, default `auto`) — whether
+  `/kb-card` may author a `kind: file_summary` card for sources that produce
+  ≥2 topic cards. `auto` currently resolves to `on` (the more common case is
+  to want a file-level summary); the resolved default may flip later without
+  a breaking config change. The N=1 short-circuit always applies — a source
+  with a single topic card never gets a separate summary card. See D21.
 
 ### 6.2 Profiles and resolution
 
@@ -432,7 +478,7 @@ a catalog/engine concern declared in the central kbi config, not in `kb.yml`,
 keeping the area config focused on what the area *is* rather than where the
 catalog writes.
 
-### 6.4 Card Granularity and the `cards.yml` Manifest
+### 6.4 Card Granularity and the `segmentation.yml` Manifest
 
 **Sizing principle.** One card = one cohesive, self-contained, bounded topic — the
 unit at which distillation stays faithful (acceptable information loss) and
@@ -462,9 +508,9 @@ where content is denser. Two controls set it:
   Density expresses willingness to spend cards; cohesion is still the floor — it
   cannot manufacture distinctions the content lacks.
 
-Depth can be **non-uniform**: a `density_overrides` entry in `cards.yml` raises (or
-lowers) the density for one `(source, section)` scope while the rest of the
-directory keeps the global `density`. The override is a durable *directive* (intent),
+Depth can be **non-uniform**: a `density_overrides` entry in `segmentation.yml`
+raises (or lowers) the density for one `(source, section)` scope while the rest
+of the directory keeps the global `density`. The override is a durable *directive* (intent),
 distinct from the realized card list (result): on re-run the proposer applies the
 override to existing *and new* content in that scope, and the global density
 everywhere else — so "go deeper here" survives and propagates correctly.
@@ -473,14 +519,17 @@ Adaptive is strong at finding seams but weak at marginal cohesion calls and at
 cross-run consistency, so it *proposes*; the human *reviews* (initially); and the
 decision is *persisted* — which is what neutralizes the consistency weakness.
 
-**The `cards.yml` manifest.** Each directory's `.kb/cards.yml` records the reviewed
-result — how that directory's sources are divided into cards. It is the record of
-boundary *decisions*, not the card content (which is regenerated). One manifest per
-directory, covering every source in it, including multiple cards carved from a
-single file:
+**The `segmentation.yml` manifest.** Each directory's `.kb/segmentation.yml`
+records the reviewed result — how that directory's sources are divided into
+cards. It is the record of boundary *decisions*, not the card content (which is
+regenerated), and not a card index (the cards themselves are the index — what
+`segmentation.yml` carries is the segmentation state that lives nowhere else:
+`scope.signature`, `locked`, `source_hash`, `density`, `density_overrides`).
+One manifest per directory, covering every source in it, including multiple
+cards carved from a single file:
 
 ```yaml
-# .kb/cards.yml — reviewed segmentation manifest for this directory.
+# .kb/segmentation.yml — reviewed segmentation manifest for this directory.
 version: 1
 updated: 2026-06-07
 density: normal                  # effective depth for this directory (from kb.yml/-run)
@@ -501,15 +550,15 @@ cards:
     source_hash: sha256:...
 ```
 
-`kb.yml` holds area *policy* (inherited); `cards.yml` holds the *realized*
-boundaries for one directory (local, concrete).
+`kb.yml` holds area *policy* (inherited); `segmentation.yml` holds the
+*realized* boundaries for one directory (local, concrete).
 
-**Boundaries vs. content.** Boundaries are sticky (in `cards.yml`, human-
-controlled); content is regenerated from source. Updating a source refreshes the
-card's content but preserves the boundary.
+**Boundaries vs. content.** Boundaries are sticky (in `segmentation.yml`,
+human-controlled); content is regenerated from source. Updating a source
+refreshes the card's content but preserves the boundary.
 
 **Reconcile on re-run (refine, don't redo).** `/kb-card -r` re-analyzes, diffs
-against `cards.yml`, and surfaces only the delta:
+against `segmentation.yml`, and surfaces only the delta:
 
 - source unchanged (hash match) → keep the card as-is;
 - source changed, boundary still resolves (validated *semantically* against the
@@ -527,7 +576,8 @@ silently. The `scope` anchor is therefore semantic (section identity + a topic
 signature) with page ranges as a derived hint, so "is this boundary still valid?"
 is reliably answerable.
 
-`cards.yml` is author-side; kbi indexes only `*.kb.md` cards and ignores it.
+`segmentation.yml` is author-side; kbi indexes only `*.kb.md` cards and ignores
+it.
 
 ## 7. Implications for kbi (future PRD extensions)
 

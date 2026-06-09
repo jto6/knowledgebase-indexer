@@ -35,7 +35,8 @@ from search import HierarchicalSearchEngine, SearchResultAggregator
 from keywords import load_keyword_files, KeywordProcessor
 from mindmap_generator import FreeplaneMapGenerator
 from markdown_renderer import MarkdownIndexRenderer
-from index_model import file_is_generated
+from index_model import file_is_generated, CardGroup
+from handlers.card_handler import is_file_summary
 from word_filter import SignificantWordFilter
 from logging_config import AppLogger, LoggedOperation, create_component_logger
 
@@ -249,27 +250,99 @@ class KnowledgebaseIndexer:
         return handlers
     
     def build_file_system_index(self, files: List[str], handlers: Dict[str, Any]) -> Dict[str, List[HierarchicalNode]]:
-        """Build hierarchical file system index."""
+        """Build hierarchical file system index for non-card files.
+
+        Card files are excluded here — they appear in `build_card_groups` instead,
+        grouped under their source path with FS-view annotations (D21).
+        """
         file_system_index = {}
-        
+
         for file_path in files:
             handler = handlers.get(file_path)
             if not handler:
                 continue
-            
+            if isinstance(handler, CardHandler):
+                continue  # cards go through build_card_groups
+
             try:
                 root_nodes = handler.get_root_nodes(file_path)
                 file_system_index[file_path] = root_nodes
-                
+
                 if self.debug:
                     print(f"Indexed {file_path}: {len(root_nodes)} root nodes")
-            
+
             except Exception as e:
                 if self.debug:
                     print(f"Error indexing {file_path}: {e}")
                 continue
-        
+
         return file_system_index
+
+    @staticmethod
+    def _resolve_card_source(card_record: Dict[str, Any]) -> Optional[str]:
+        """Resolve a card's `source` frontmatter to an absolute filesystem path.
+
+        Returns None for pure-URL sources (no local path). A list source (URL +
+        local capture) uses the first non-URL entry as the local path.
+        """
+        file_path = card_record.get('file_path', '')
+        source = card_record.get('source')
+        if not source:
+            return None
+        if isinstance(source, list):
+            local = next(
+                (str(s).strip() for s in source
+                 if not str(s).strip().startswith(('http://', 'https://'))),
+                None
+            )
+            if local is None:
+                return None
+            source = local
+        source = str(source).strip()
+        if source.startswith(('http://', 'https://')):
+            return None
+        card_dir = Path(file_path).parent
+        return str((card_dir / source).resolve())
+
+    def build_card_groups(self, bfiles: List[str], card_records: Dict[str, Any]) -> Dict[str, CardGroup]:
+        """Group card files by resolved source path and compute FS-view annotations.
+
+        Implements the annotation rule from D21 / REFERENCE.md §1.7 / §5.3:
+        - A `kind: file_summary` card → its essence annotates the source node
+          and it is NOT rendered as a leaf (hide_summary_card=True).
+        - A lone topic card (N=1, no file_summary) → its essence annotates the
+          source node; the card IS still rendered as a leaf.
+        - N≥2 topic cards with no file_summary → source node has no annotation.
+        """
+        groups: Dict[str, CardGroup] = {}
+
+        for fp in bfiles:
+            rec = card_records.get(fp)
+            if not rec:
+                continue
+            source = self._resolve_card_source(rec)
+            if source is None:
+                source = str(Path(fp).parent.parent.resolve())
+            if source not in groups:
+                groups[source] = CardGroup()
+            label = rec.get('title') or Path(fp).name
+            groups[source].cards.append((label, fp))
+
+        for source, group in groups.items():
+            card_recs = [(fp, card_records[fp]) for _, fp in group.cards if fp in card_records]
+            summary = [(fp, r) for fp, r in card_recs if is_file_summary(r)]
+            topic = [(fp, r) for fp, r in card_recs if not is_file_summary(r)]
+
+            if summary:
+                fp, rec = summary[0]
+                group.annotation = rec.get('essence', '')
+                group.hidden_card = fp
+            elif len(topic) == 1:
+                _, rec = topic[0]
+                group.annotation = rec.get('essence', '')
+                group.hidden_card = None
+
+        return groups
     
     def process_keyword_searches(self, files: List[str], handlers: Dict[str, Any]) -> List[Any]:
         """Process keyword-based searches and return hierarchical keyword entries with results."""
@@ -513,6 +586,7 @@ class KnowledgebaseIndexer:
         for name, bfiles in buckets.items():
             di = DomainIndex(name=name, files=bfiles)
             di.file_system = self.build_file_system_index(bfiles, handlers)
+            di.card_groups = self.build_card_groups(bfiles, card_records)
             di.keyword_entries = self.process_keyword_searches(bfiles, handlers)
             di.tags = self.extract_tags(bfiles, handlers)
             di.words = self.extract_significant_words(bfiles, handlers) if word_on else {}

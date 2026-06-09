@@ -60,8 +60,9 @@ class MarkdownIndexRenderer:
 
     def _render_views(self, di) -> str:
         parts: List[str] = []
-        if di.file_system and view_enabled(self.config, VIEW_FILE_SYSTEM, RENDERER):
-            parts.append(self._render_file_system(di.file_system))
+        has_fs = di.file_system or di.card_groups
+        if has_fs and view_enabled(self.config, VIEW_FILE_SYSTEM, RENDERER):
+            parts.append(self._render_file_system(di.file_system, di.card_groups))
         if di.keyword_entries and view_enabled(self.config, VIEW_KEYWORD, RENDERER):
             parts.append(self._render_keyword(di.keyword_entries))
         if di.tags and view_enabled(self.config, VIEW_TAG, RENDERER):
@@ -106,26 +107,59 @@ class MarkdownIndexRenderer:
 
     # -- views ---------------------------------------------------------------
 
-    def _render_file_system(self, file_system: Dict[str, list]) -> str:
-        files = sorted(file_system.keys())
-        dirs = [os.path.dirname(f) for f in files]
+    def _render_file_system(self, file_system: Dict[str, list], card_groups=None) -> str:
+        """Render the File System view.
+
+        Non-card files appear as leaf links (unchanged). Cards are grouped under
+        their source path: the source node is annotated with an essence line
+        when available (from a `kind: file_summary` card or a lone topic card),
+        and each topic card appears as a child leaf under the source node (D21).
+        """
+        if card_groups is None:
+            card_groups = {}
+
+        all_paths = list(file_system.keys()) + list(card_groups.keys())
+        if not all_paths:
+            return ""
+        dirs = [os.path.dirname(p) for p in all_paths]
         base = os.path.commonpath(dirs) if len(set(dirs)) > 1 else dirs[0]
 
         tree: Dict[str, Any] = {}
-        for f in files:
-            rel = os.path.relpath(f, base)
+
+        def insert(path, **kwargs):
+            rel = os.path.relpath(path, base)
             parts = rel.split(os.sep)
             node = tree
             for p in parts[:-1]:
                 node = node.setdefault(p, {})
-            node.setdefault("__files__", []).append(f)
+            bucket = node.setdefault("__entries__", [])
+            bucket.append({"path": path, "name": parts[-1], **kwargs})
+
+        for f in file_system.keys():
+            insert(f, kind="file", root_nodes=file_system[f])
+        for source, group in card_groups.items():
+            insert(source, kind="card_group", group=group)
 
         lines = ["## File System", "", f"Base: `{base}`", ""]
 
         def walk(node, depth):
-            for f in sorted(node.get("__files__", [])):
-                lines.append("\t" * depth + f"- {self._link(self._label(f, file_system[f]), f)}")
-            for d in sorted(k for k in node if k != "__files__"):
+            entries = sorted(node.get("__entries__", []), key=lambda e: e["name"])
+            for e in entries:
+                if e["kind"] == "file":
+                    label = self._label(e["path"], e["root_nodes"])
+                    lines.append("\t" * depth + f"- {self._link(label, e['path'])}")
+                else:  # card_group
+                    group = e["group"]
+                    source_label = Path(e["path"]).name
+                    annotation = f" — {group.annotation}" if group.annotation else ""
+                    lines.append("\t" * depth + f"- {self._link(source_label, e['path'])}{annotation}")
+                    visible = [
+                        (lbl, cp) for lbl, cp in group.cards
+                        if cp != group.hidden_card
+                    ]
+                    for lbl, cp in sorted(visible, key=lambda x: x[0].lower()):
+                        lines.append("\t" * (depth + 1) + f"- {self._link(lbl, cp)}")
+            for d in sorted(k for k in node if k != "__entries__"):
                 lines.append("\t" * depth + f"- {d}/")
                 walk(node[d], depth + 1)
 

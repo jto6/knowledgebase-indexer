@@ -22,12 +22,13 @@ Artifacts and where they live:
 |-----------------------|-------------------------------|---------------------|--------------------------|
 | Card                  | `<dir>/.kb/<name>.kb.md`      | `/kb-card` (author) | `kbi`, humans, consumers |
 | Area config           | `<area>/.kb/kb.yml`           | author (once)       | `/kb-card`               |
-| Segmentation manifest | `<dir>/.kb/cards.yml`         | `/kb-card`          | `/kb-card`               |
+| Segmentation manifest | `<dir>/.kb/segmentation.yml`  | `/kb-card`          | `/kb-card`               |
 | Catalog config        | a `kbi` config file (YAML)    | author              | `kbi`                    |
 | Slice                 | `<catalog>/index/<domain>.md` | `kbi` (generated)   | consumers, humans        |
 
-`kbi` indexes only `*.kb.md` cards; it ignores `kb.yml` and `cards.yml` (those are
-author-side).
+`kbi` indexes only `*.kb.md` cards; it ignores `kb.yml` and `segmentation.yml`
+(those are author-side). All content kbi consumes lives inside `*.kb.md` — no
+out-of-band companion files.
 
 ## 1. The Card — `<name>.kb.md`
 
@@ -41,6 +42,11 @@ body. Lives in the `.kb/` directory beside its source.
 - Multiple cards from one file (section splits): `<source-stem>.<section-slug>.kb.md`
   (e.g. `report.architecture.kb.md`), each with the same `source` and a distinct
   `scope`.
+- The bare-stem slot `<source-stem>.kb.md` is **reserved for the file-summary
+  card** (see §1.7) when one exists for that source. When a file-summary card is
+  present, *every* topic card from that source must take the
+  `<source-stem>.<section-slug>.kb.md` form, even if there is only one — the
+  bare stem is never shared.
 
 ### 1.2 Frontmatter fields
 
@@ -62,6 +68,11 @@ Optional:
 
 - `slug` — readable alias for the card (kebab-case). Used in `builds_on` and link
   targets for readability; resolves to `id` underneath.
+- `kind` — card role. Absent (the default) means a **topic card**. The only
+  other value today is `file_summary`, marking the card as a file-level summary
+  for its `source` (see §1.7); the renderer treats a `file_summary` card as the
+  FS-view file-node annotation rather than a leaf. At most one `file_summary`
+  card may exist per source.
 - `builds_on` — list of card ids/slugs this card depends on (prerequisite edges).
 - `defines` — terms this card is the canonical home for (feeds the glossary and
   `[[term]]` link resolution).
@@ -152,6 +163,34 @@ meta:
   preached: 2026-06-08
 ```
 
+### 1.7 File-summary cards (`kind: file_summary`)
+
+When a single source produces multiple topic cards, the source as a whole still
+has an essence that the section cards individually do not carry — "what this
+file is conveying." That essence is captured as a **file-summary card**: the
+same `.kb.md` shape, in the same `.kb/` directory, identified by frontmatter
+`kind: file_summary`. There is no second file type and no companion manifest;
+kbi reads it through the same handler as every other card and recognizes the
+role from the frontmatter.
+
+Authoring rules:
+
+- **Opt-in** at the area level via `kb.yml` `file_summary: auto|on|off` (§2.1),
+  or per run via `/kb-card -file-summary` / `-no-file-summary` (§4.1).
+- **N=1 short-circuit.** When a source produces only one topic card, no
+  file-summary card is written — the lone topic card's `>` essence already
+  serves as the file's summary, and the renderer reuses it for the file-node
+  annotation (§5.3). The file-summary card is meaningful only when N≥2 topic
+  cards exist for the source.
+- **Filename:** the bare-stem slot `<source-stem>.kb.md` (§1.1).
+- **Scope:** the file as a whole; the frontmatter has no `scope.section`. The
+  body distills the source itself (one-sentence essence, then `## Core
+  Concepts` describing the file's overall content/argument), not a TOC of the
+  topic cards.
+- **Refresh:** when any topic card under the same source is refreshed or
+  re-segmented, the file-summary card is regenerated in the same pass.
+- **At most one** `file_summary` card per source.
+
 ## 2. Area Config — `kb.yml`
 
 One per knowledge-base area, at `<area>/.kb/kb.yml`. It declares policy for the
@@ -189,6 +228,12 @@ Optional:
   `never` to suppress splitting and force one card per unit). See §4.
 - `card_density` — how deep to split: `coarse | normal | fine | exhaustive`,
   default `normal` (see §4).
+- `file_summary` — `auto | on | off` (default `auto`, which currently resolves
+  to `on`). Controls whether `/kb-card` may author a `kind: file_summary` card
+  per source (see §1.7). The `auto` default is reserved so the resolved
+  behavior can be flipped later without a breaking config change. The N=1
+  short-circuit applies regardless: a file producing only one topic card never
+  gets a separate summary card.
 - `draws_on` — list of upstream domains this area subscribes to (drives consumer
   wiring; rendered as a cross-domain edge).
 
@@ -216,13 +261,16 @@ seed_tags: [faith, grace, discipleship, surrender, obedience, suffering]
 meta_fields: [scripture]
 ```
 
-## 3. Segmentation Manifest — `cards.yml`
+## 3. Segmentation Manifest — `segmentation.yml`
 
-One per directory, at `<dir>/.kb/cards.yml`. It is the **record** of how that
-directory's sources were divided into cards (the reviewed boundary decisions),
-covering every source in the directory — including multiple cards carved from one
-file. It is *not* the card content (that is regenerated). `/kb-card` writes and
-reconciles it; `kbi` ignores it.
+One per directory, at `<dir>/.kb/segmentation.yml`. It is the **record** of how
+that directory's sources were divided into cards (the reviewed boundary
+decisions), covering every source in the directory — including multiple cards
+carved from one file. It is *not* the card content (that is regenerated), and
+it is *not* an index of cards (that is the cards themselves, plus
+`ls *.kb.md`); it carries the segmentation state — `scope.signature`, `locked`,
+`source_hash`, `density`, `density_overrides` — that has no other home.
+`/kb-card` writes and reconciles it; `kbi` ignores it.
 
 ### 3.1 Top-level fields
 
@@ -251,9 +299,9 @@ reconciles it; `kbi` ignores it.
 
 ### 3.3 Reconcile semantics
 
-On a re-run, `/kb-card` diffs the sources against `cards.yml` and classifies each
-card (see §4.4). Boundaries are sticky; content is regenerated. Decisions are
-refined, never redone.
+On a re-run, `/kb-card` diffs the sources against `segmentation.yml` and
+classifies each card (see §4.4). Boundaries are sticky; content is regenerated.
+Decisions are refined, never redone.
 
 ### 3.4 Example
 
@@ -280,15 +328,16 @@ cards:
 
 ## 4. The `/kb-card` Command (author-side)
 
-Creates/updates cards and reconciles `cards.yml`. Granularity is **adaptive-first**
-(the command proposes the cut) with `kb.yml` overrides and manual review. It does
-**not** run `kbi`.
+Creates/updates cards and reconciles `segmentation.yml`. Granularity is
+**adaptive-first** (the command proposes the cut) with `kb.yml` overrides and
+manual review. It does **not** run `kbi`.
 
 ### 4.1 Usage
 
 ```
 /kb-card [source] [-r] [-plan] [-resegment] [-update]
          [-density coarse|normal|fine|exhaustive] [-cards <N>]
+         [-file-summary | -no-file-summary]
          [-domain <d>] [-level 1|2|3] [-quotes | -no-quotes]
 ```
 
@@ -296,14 +345,18 @@ Creates/updates cards and reconciles `cards.yml`. Granularity is **adaptive-firs
   captured to a local transcript first (see §1.6); `-visual` (planned) is rejected
   until implemented.
 - `-r` — recurse: author a card per unit across the tree.
-- `-plan` — propose/update `cards.yml` and **stop before authoring** — the
-  review/adjustment gate.
+- `-plan` — propose/update `segmentation.yml` and **stop before authoring** —
+  the review/adjustment gate.
 - `-resegment` — discard a source's existing boundaries and re-propose fresh.
 - `-update` — refresh content of existing cards whose source drifted.
 - `-density` — depth of the split (overrides `kb.yml card_density`).
 - `-cards <N>` — a **maximum** card count (a ceiling, **never a quota**):
   partitioning stops at the finest meaningful boundary and never invents or
   fragments topics to reach N.
+- `-file-summary` / `-no-file-summary` — per-run override of the area's
+  `kb.yml file_summary` setting (§2.1). The N=1 short-circuit applies even
+  with `-file-summary`: a source producing only one topic card never gets a
+  separate summary card. See §1.7.
 - `-domain` / `-level` / `-quotes` / `-no-quotes` — override domain / profile.
 
 ### 4.2 Granularity model (three dials)
@@ -327,8 +380,8 @@ All three are *optional overrides* of the adaptive proposal; omit them to let
 1. Resolve scope + area config (`kb.yml`) and the effective profile/density. On
    first run, auto-create `.kb/` and bootstrap a default `kb.yml` if none is found.
 2. **Segment:** propose boundaries (adaptive, honoring overrides), reconcile
-   against `cards.yml`, present the delta for review, write `cards.yml`. (`-plan`
-   stops here.)
+   against `segmentation.yml`, present the delta for review, write
+   `segmentation.yml`. (`-plan` stops here.)
 3. **Author/refresh:** distill each new/refreshed/re-segmented scope per the
    profile; reconcile tags; extract `meta`; assemble frontmatter; linkify known
    terms; write the card.
@@ -429,7 +482,12 @@ Within each domain, every **view** is a *key → file-location* mapping — a
 navigational index that links to files, it does not contain their content (open a
 linked file to read it):
 
-- **File System** — directory tree → file links.
+- **File System** — directory tree → file links. File nodes are annotated with
+  a one-line summary chosen as follows: if a `kind: file_summary` card exists
+  for that source, use its `>` essence and *do not* render that card as a
+  leaf; else if exactly one topic card exists for that source, use that card's
+  essence (and still render it as a leaf); else (≥2 topic cards, no
+  file-summary card) the file node has no annotation. See §1.7.
 - **Word** — significant word → file links. **Opt-in** (off by default); see §5.6
   for the preferred ad-hoc alternative.
 - **Keyword** — keyword hierarchy (from `keywords.files`) → file links.

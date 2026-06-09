@@ -152,8 +152,9 @@ class FreeplaneMapGenerator:
         from index_model import (view_enabled, VIEW_FILE_SYSTEM, VIEW_KEYWORD,
                                  VIEW_TAG, VIEW_WORD, VIEW_DEPENDENCIES, VIEW_GLOSSARY)
         r = 'freeplane'
-        if di.file_system and view_enabled(config, VIEW_FILE_SYSTEM, r):
-            self._create_file_system_index(parent, di.file_system)
+        if (di.file_system or di.card_groups) and view_enabled(config, VIEW_FILE_SYSTEM, r):
+            self._create_file_system_index(parent, di.file_system,
+                                           getattr(di, 'card_groups', {}))
         if di.keyword_entries and view_enabled(config, VIEW_KEYWORD, r):
             self._create_keyword_index(parent, di.keyword_entries)
         if di.tags and view_enabled(config, VIEW_TAG, r):
@@ -199,21 +200,26 @@ class FreeplaneMapGenerator:
         return gloss_root
 
     def _create_file_system_index(self, parent: ET.Element,
-                                file_system_index: Dict[str, List[HierarchicalNode]]) -> ET.Element:
-        """Create file system navigation index."""
+                                file_system_index: Dict[str, List[HierarchicalNode]],
+                                card_groups=None) -> ET.Element:
+        """Create file system navigation index.
+
+        Non-card files appear as leaf nodes (unchanged). Cards are grouped under
+        their source path: the source node is annotated with an essence when
+        available, and topic cards appear as children (D21).
+        """
+        if card_groups is None:
+            card_groups = {}
         fs_root = ET.SubElement(parent, 'node', {
             'ID': self._generate_unique_id(),
             'CREATED': get_current_timestamp(),
             'MODIFIED': get_current_timestamp(),
             'TEXT': 'File System Index'
         })
-        
-        # Group files by directory
-        dir_structure = self._build_directory_structure(list(file_system_index.keys()))
-        
-        # Create directory hierarchy
-        self._create_directory_nodes(fs_root, dir_structure, file_system_index)
-        
+
+        all_paths = list(file_system_index.keys()) + list(card_groups.keys())
+        dir_structure = self._build_directory_structure(all_paths)
+        self._create_directory_nodes(fs_root, dir_structure, file_system_index, card_groups)
         return fs_root
     
     def _build_directory_structure(self, file_paths: List[str]) -> Dict[str, Any]:
@@ -290,47 +296,50 @@ class FreeplaneMapGenerator:
         return tuple(common_parts)
     
     def _create_directory_nodes(self, parent: ET.Element, structure: Dict[str, Any],
-                              file_index: Dict[str, List[HierarchicalNode]]):
+                              file_index: Dict[str, List[HierarchicalNode]],
+                              card_groups=None):
         """Recursively create directory and file nodes."""
-        # First, handle files at the root level (if any)
+        if card_groups is None:
+            card_groups = {}
+
+        # Files at this level (regular non-card files)
         if '_files' in structure:
             for file_path in sorted(structure['_files']):
-                # Skip the output file itself
                 if Path(file_path).resolve() == self.output_path.resolve():
                     continue
-                
-                self._create_file_node(parent, file_path)
-        
-        # Create directory nodes (sorted)
+                if file_path in card_groups:
+                    self._create_card_group_node(parent, file_path, card_groups[file_path])
+                else:
+                    self._create_file_node(parent, file_path)
+
+        # Directory nodes
         for dir_name in sorted(structure.keys()):
             if dir_name.startswith('_'):
                 continue
-            
+
             dir_data = structure[dir_name]
-            
-            # Skip empty directories
             if not dir_data.get('_dirs') and not dir_data.get('_files'):
                 continue
-            
+
             dir_node = ET.SubElement(parent, 'node', {
                 'ID': self._generate_unique_id(),
                 'CREATED': get_current_timestamp(),
                 'MODIFIED': get_current_timestamp(),
                 'TEXT': dir_name
             })
-            
-            # Recurse into subdirectories
+
             if '_dirs' in dir_data:
-                self._create_directory_nodes(dir_node, dir_data['_dirs'], file_index)
-            
-            # Add files in this directory
+                self._create_directory_nodes(dir_node, dir_data['_dirs'],
+                                             file_index, card_groups)
             if '_files' in dir_data:
                 for file_path in sorted(dir_data['_files']):
-                    # Skip the output file itself
                     if Path(file_path).resolve() == self.output_path.resolve():
                         continue
-                    
-                    self._create_file_node(dir_node, file_path)
+                    if file_path in card_groups:
+                        self._create_card_group_node(dir_node, file_path,
+                                                     card_groups[file_path])
+                    else:
+                        self._create_file_node(dir_node, file_path)
     
     def _create_file_node(self, parent: ET.Element, file_path: str):
         """Create node for a single file."""
@@ -353,8 +362,42 @@ class FreeplaneMapGenerator:
         })
         
         # R-FS-002: File System Index only requires hyperlink to file, not file contents
-    
-    def _create_hierarchical_node(self, parent: ET.Element, node: HierarchicalNode, 
+
+    def _create_card_group_node(self, parent: ET.Element, source_path: str, group):
+        """Create a source-file node annotated with essence + child card leaves (D21)."""
+        try:
+            link_path = str(Path(source_path).relative_to(Path.cwd()))
+        except ValueError:
+            link_path = source_path
+
+        label = Path(source_path).name
+        if group.annotation:
+            label = f"{label} — {group.annotation}"
+
+        source_node = ET.SubElement(parent, 'node', {
+            'ID': self._generate_unique_id(),
+            'CREATED': get_current_timestamp(),
+            'MODIFIED': get_current_timestamp(),
+            'TEXT': label,
+            'LINK': link_path,
+        })
+
+        for card_label, card_path in sorted(group.cards, key=lambda x: x[0].lower()):
+            if card_path == group.hidden_card:
+                continue
+            try:
+                card_link = str(Path(card_path).relative_to(Path.cwd()))
+            except ValueError:
+                card_link = card_path
+            ET.SubElement(source_node, 'node', {
+                'ID': self._generate_unique_id(),
+                'CREATED': get_current_timestamp(),
+                'MODIFIED': get_current_timestamp(),
+                'TEXT': card_label,
+                'LINK': card_link,
+            })
+
+    def _create_hierarchical_node(self, parent: ET.Element, node: HierarchicalNode,
                                 base_file_path: str):
         """Create XML node from HierarchicalNode."""
         # Determine link
