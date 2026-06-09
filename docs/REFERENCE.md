@@ -389,6 +389,24 @@ A file is **classified by its most-specific built-in type** (e.g. `.kb.md` is a
 - **Deep, everything:** omit `types` → all built-in types (cards parsed
   card-aware).
 
+### 5.2a Self-index skip (provenance marker)
+
+kbi stamps every index it writes (`.mm` and `.md`) with an invisible marker —
+the comment `<!-- kbi:generated v=N at=<UTC> -->`. On discovery, kbi skips any
+file whose head carries the `kbi:generated` token, so a generated index sitting
+inside a scanned tree is **not re-ingested as source** (which would otherwise
+balloon the word index with one index's words counted into another). Notes:
+
+- The marker is an XML/HTML comment: invisible in Freeplane and in rendered
+  markdown. In `.mm` it sits just inside `<map>` (where Freeplane writes its own
+  comment), so it survives Freeplane's loader.
+- Detection is by **content**, not filename — robust to renames and to *which*
+  config produced the file. The configured `output.file` is also excluded
+  separately.
+- **Transition:** an index generated before this feature lacks the marker and is
+  not recognised until it is **regenerated once** with current kbi. Until then,
+  exclude it manually (`directories.exclude`) if it is being re-indexed.
+
 ### 5.3 The index model and views
 
 `kbi` builds one model from whatever the handlers extract, then a renderer

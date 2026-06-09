@@ -696,14 +696,20 @@ class FreeplaneMapGenerator:
         
         # Remove empty lines and clean up
         lines = [line for line in pretty_xml.split('\n') if line.strip()]
-        
+
         # Remove the XML declaration line (minidom adds it)
         if lines and lines[0].startswith('<?xml'):
             lines = lines[1:]
-        
+
+        # Stamp the provenance marker as a comment just inside <map> (where
+        # Freeplane writes its own comment), so a later kbi run skips this file.
+        from index_model import marker_comment
+        if lines and lines[0].lstrip().startswith('<map'):
+            lines.insert(1, '  ' + marker_comment())
+
         # Match existing Freeplane format - no XML declaration
         xml_content = '\n'.join(lines)
-        
+
         return xml_content
 
 

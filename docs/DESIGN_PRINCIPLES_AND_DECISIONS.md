@@ -222,6 +222,22 @@ Each decision records the choice and why; supersessions are noted in the addenda
   rather than letting them fall through to the `markdown` handler — the precise
   behavior the deep-index-without-summaries use needs. (P9, D2) — supersedes the
   `file_types` mechanism of D12/Addendum F.
+- **D18 — kbi stamps its output with an invisible provenance marker and skips any
+  file carrying it.** A generated index that lives inside a scanned tree would
+  otherwise be re-ingested as source on the next run — self-recursion that
+  inflates the index without adding information (a generated `.mm` is mostly a
+  word index of *other* files' words). Every output kbi writes (`.mm` and `.md`)
+  now carries the marker `<!-- kbi:generated v=N at=<UTC> -->`, and
+  `discover_files` skips any file whose head contains the `kbi:generated` token.
+  The marker is an XML/HTML **comment**: invisible in Freeplane and in rendered
+  markdown, and tolerated by Freeplane's loader — it is placed just inside `<map>`
+  (before the root node), the same position where Freeplane writes its own
+  comment, so a round-trip through Freeplane is known-safe. The token never
+  contains `--` (illegal inside an XML comment). Detection is by **content, not
+  filename or structure**, so it is robust to renames, relocation, and *which*
+  config produced the file (the configured `output.file` is still excluded
+  separately as a cheap belt-and-suspenders). Transition: pre-marker outputs are
+  not recognised until regenerated once with marker-writing code. (P9)
 
 ## 5. Card Schema (current)
 

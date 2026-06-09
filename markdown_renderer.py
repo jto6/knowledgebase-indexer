@@ -16,8 +16,9 @@ import re
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
-from index_model import (view_enabled, VIEW_FILE_SYSTEM, VIEW_KEYWORD, VIEW_TAG,
-                         VIEW_WORD, VIEW_DEPENDENCIES, VIEW_GLOSSARY)
+from index_model import (marker_comment, view_enabled, VIEW_FILE_SYSTEM,
+                         VIEW_KEYWORD, VIEW_TAG, VIEW_WORD, VIEW_DEPENDENCIES,
+                         VIEW_GLOSSARY)
 
 RENDERER = "markdown"
 
@@ -95,6 +96,7 @@ class MarkdownIndexRenderer:
 
     def _header(self, title: str) -> str:
         return (
+            f"{marker_comment()}\n\n"
             f"# Knowledge Base Index — {title}\n\n"
             "> Navigational index built by `kbi` — it maps keys to **file "
             "locations**, not content. Each entry links to an indexed file; open "

@@ -12,6 +12,7 @@ See docs/DESIGN_PRINCIPLES_AND_DECISIONS.md (D16).
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
@@ -19,6 +20,41 @@ try:
     import yaml
 except ImportError:  # pragma: no cover - yaml is a declared dependency
     yaml = None
+
+
+# --- Provenance marker ------------------------------------------------------
+# kbi stamps every index it writes (.mm and .md) with an invisible marker so a
+# later run can recognise its own output and refuse to re-index it (avoiding the
+# self-recursion where a generated index inside a scanned tree gets ingested as
+# source). The marker is an XML/HTML comment — invisible in Freeplane and in
+# rendered markdown, and tolerated by Freeplane's loader (which writes its own
+# comment in the same position). The token must never contain "--" (illegal
+# inside an XML comment), so the timestamp uses single-hyphen ISO-8601.
+KBI_MARKER_TOKEN = "kbi:generated"
+KBI_MARKER_VERSION = "1"
+# Only the head of a file is scanned for the marker; outputs carry it at the top.
+_MARKER_SCAN_BYTES = 4096
+
+
+def marker_comment() -> str:
+    """The provenance comment line written into generated indexes (.mm and .md).
+
+    Valid as both an XML comment (Freeplane) and an HTML comment (markdown).
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"<!-- {KBI_MARKER_TOKEN} v={KBI_MARKER_VERSION} at={stamp} -->"
+
+
+def file_is_generated(path, max_bytes: int = _MARKER_SCAN_BYTES) -> bool:
+    """True if `path` carries the kbi provenance marker in its head.
+
+    Reads only the first `max_bytes`; unreadable files are treated as not ours.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            return KBI_MARKER_TOKEN in fh.read(max_bytes)
+    except OSError:
+        return False
 
 
 # The bucket name used for domainless files when *some* files have a domain.

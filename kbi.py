@@ -35,6 +35,7 @@ from search import HierarchicalSearchEngine, SearchResultAggregator
 from keywords import load_keyword_files, KeywordProcessor
 from mindmap_generator import FreeplaneMapGenerator
 from markdown_renderer import MarkdownIndexRenderer
+from index_model import file_is_generated
 from word_filter import SignificantWordFilter
 from logging_config import AppLogger, LoggedOperation, create_component_logger
 
@@ -194,9 +195,13 @@ class KnowledgebaseIndexer:
                             # Keep only files whose most-specific built-in type is enabled
                             if (any(filename.endswith(ext) for ext in supported_extensions)
                                     and self._type_of(filename) in enabled_types):
-                                # Double-check the full path isn't in an excluded location
-                                # and that it's not the output file
-                                if not is_excluded(file_path) and Path(file_path).resolve() != output_file:
+                                # Double-check the full path isn't in an excluded location,
+                                # isn't the output file, and isn't a kbi-generated index
+                                # (skip our own output anywhere in the tree, not just the
+                                # configured output path — avoids self-recursion).
+                                if (not is_excluded(file_path)
+                                        and Path(file_path).resolve() != output_file
+                                        and not file_is_generated(file_path)):
                                     all_files.add(file_path)
 
                         # Progress logging for large scans
