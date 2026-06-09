@@ -612,20 +612,20 @@ Examples:
     
     parser.add_argument(
         '--sample-config',
-        action='store_true',
-        help='Create sample configuration file and exit'
+        nargs='?', const='kbi.yml', default=None, metavar='PATH',
+        help='Write a sample configuration file (default: kbi.yml) and exit'
     )
-    
+
     parser.add_argument(
         '--sample-keywords',
-        action='store_true',
-        help='Create sample keyword file and exit'
+        nargs='?', const='keywords.txt', default=None, metavar='PATH',
+        help='Write a sample keyword file (default: keywords.txt) and exit'
     )
     
     args = parser.parse_args()
     
     # Handle sample file generation
-    if args.sample_config:
+    if args.sample_config is not None:
         sample_config = """# Sample kbi configuration file
 directories:
   include:
@@ -657,14 +657,19 @@ output:
 #   include: [card]             # or a card-only catalog
 """
         
-        with open('kbi.yml', 'w') as f:
-            f.write(sample_config)
-        print("Sample configuration file created: kbi.yml")
+        dest = Path(args.sample_config)
+        if dest.parent != Path('.'):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(sample_config)
+        print(f"Sample configuration file created: {dest}")
         return 0
-    
-    if args.sample_keywords:
+
+    if args.sample_keywords is not None:
         from keywords import create_sample_keyword_file
-        create_sample_keyword_file('keywords.txt')
+        dest = Path(args.sample_keywords)
+        if dest.parent != Path('.'):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+        create_sample_keyword_file(str(dest))
         return 0
 
     # A config is required for any actual indexing run (the utility modes above

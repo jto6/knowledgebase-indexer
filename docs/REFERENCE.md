@@ -357,8 +357,10 @@ python3 kbi.py <config.yml>
 ```
 
 There is no default-config fallback — a run without a config errors out. Use
-`python3 kbi.py --sample-config` to scaffold a starter `kbi.yml`, and
-`--output <path>` to override `output.file`.
+`python3 kbi.py --sample-config [PATH]` to scaffold a starter config (defaults to
+`kbi.yml`; `--sample-keywords [PATH]` does the same for a keyword file), and
+`--output <path>` to override `output.file`. The sample commands create any
+missing parent directories in `PATH`.
 
 ### 5.1 Config schema
 
