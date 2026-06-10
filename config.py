@@ -113,7 +113,6 @@ class ConfigLoader:
                 "files": []
             },
             "output": {
-                "file": "index.mm",
                 "format": "freeplane"
             }
         }

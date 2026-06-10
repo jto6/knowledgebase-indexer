@@ -16,7 +16,6 @@ keywords:
     - "/home/jon/TIGoogleDrive/MyMaps/.kw.mmtxt"
 
 output:
-  file: "index.mm"
   format: "freeplane"
   partition_by_domain: "off"  # flat index even though SDV-research carries a domain
 

@@ -15,7 +15,8 @@ keywords:
     - "/home/jon/TIGoogleDrive/MyMaps/.kw.mmtxt"
 
 output:
-  file: "index.mm"          # for format: markdown this is the output *directory*
+  # file: "my_index.mm"     # optional: override derived default (<config-stem>.mm for
+  #                          # freeplane, <config-stem>/ dir for markdown)
   format: "freeplane"       # freeplane (.mm) | markdown (per-domain index files)
   partition_by_domain: "auto" # auto (split by domain if any file has one) | on | off
   # Per-view emission. Each view is auto | on | off. `auto` is the renderer

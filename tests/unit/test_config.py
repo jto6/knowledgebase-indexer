@@ -57,13 +57,11 @@ class TestConfigLoader:
     def test_config_validation_missing_required(self):
         """Test validation fails with missing required fields."""
         loader = ConfigLoader()
+        # directories.include is the only required field
         invalid_config = {
-            "directories": {
-                "include": ["**/*.md"]
-            }
-            # Missing required 'output' section
+            "directories": {}  # include is required within directories
         }
-        
+
         with pytest.raises(ValueError, match="Configuration validation error"):
             loader.validate_config(invalid_config)
     

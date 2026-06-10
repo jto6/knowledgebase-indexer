@@ -641,6 +641,15 @@ class KnowledgebaseIndexer:
             raise
 
 
+def _apply_output_default(config: dict, config_path: str) -> None:
+    """Set output.file from the config stem when not explicitly configured."""
+    if config['output'].get('file'):
+        return
+    stem = Path(config_path).stem
+    fmt = config['output'].get('format', 'freeplane')
+    config['output']['file'] = f"{stem}.mm" if fmt == 'freeplane' else stem
+
+
 def run_search(argv: List[str]) -> int:
     """`kbi search <config> PATTERN [backend args]` — search the indexed files.
 
@@ -667,6 +676,7 @@ Extra arguments after PATTERN are passed through to the backend (rg, else grep):
 
     try:
         config = ConfigLoader().load_config(args.config)
+        _apply_output_default(config, args.config)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 2
@@ -841,9 +851,10 @@ output:
         # Load configuration
         config_loader = ConfigLoader()
         config = config_loader.load_config(args.config)
-        
+        _apply_output_default(config, args.config)
+
         main_logger.info(f"Configuration loaded from: {args.config}")
-        
+
         # Override output if specified
         if args.output:
             config['output']['file'] = args.output
