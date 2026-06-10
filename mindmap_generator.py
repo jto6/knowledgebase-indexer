@@ -382,17 +382,14 @@ class FreeplaneMapGenerator:
         except ValueError:
             link_path = source_path
 
-        label = Path(source_path).name
-        if group.annotation:
-            label = f"{label} — {group.annotation}"
-
         source_node = ET.SubElement(parent, 'node', {
             'ID': self._generate_unique_id(),
             'CREATED': get_current_timestamp(),
             'MODIFIED': get_current_timestamp(),
-            'TEXT': label,
+            'TEXT': Path(source_path).name,
             'LINK': link_path,
         })
+        self._add_details(source_node, group.annotation)
 
         for card_label, card_path, card_essence in sorted(group.cards, key=lambda x: x[0].lower()):
             if card_path == group.hidden_card:
