@@ -363,6 +363,18 @@ class FreeplaneMapGenerator:
         
         # R-FS-002: File System Index only requires hyperlink to file, not file contents
 
+    @staticmethod
+    def _add_details(node_elem: ET.Element, text: str) -> None:
+        """Attach a collapsed DETAILS panel to a Freeplane node."""
+        if not text:
+            return
+        rc = ET.SubElement(node_elem, 'richcontent', {'TYPE': 'DETAILS', 'HIDDEN': 'true'})
+        html = ET.SubElement(rc, 'html')
+        ET.SubElement(html, 'head')
+        body = ET.SubElement(html, 'body')
+        p = ET.SubElement(body, 'p')
+        p.text = text
+
     def _create_card_group_node(self, parent: ET.Element, source_path: str, group):
         """Create a source-file node annotated with essence + child card leaves (D21)."""
         try:
@@ -382,20 +394,21 @@ class FreeplaneMapGenerator:
             'LINK': link_path,
         })
 
-        for card_label, card_path in sorted(group.cards, key=lambda x: x[0].lower()):
+        for card_label, card_path, card_essence in sorted(group.cards, key=lambda x: x[0].lower()):
             if card_path == group.hidden_card:
                 continue
             try:
                 card_link = str(Path(card_path).relative_to(Path.cwd()))
             except ValueError:
                 card_link = card_path
-            ET.SubElement(source_node, 'node', {
+            card_node = ET.SubElement(source_node, 'node', {
                 'ID': self._generate_unique_id(),
                 'CREATED': get_current_timestamp(),
                 'MODIFIED': get_current_timestamp(),
                 'TEXT': card_label,
                 'LINK': card_link,
             })
+            self._add_details(card_node, card_essence)
 
     def _create_hierarchical_node(self, parent: ET.Element, node: HierarchicalNode,
                                 base_file_path: str):

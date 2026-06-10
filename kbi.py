@@ -326,10 +326,10 @@ class KnowledgebaseIndexer:
             if source not in groups:
                 groups[source] = CardGroup()
             label = rec.get('title') or Path(fp).name
-            groups[source].cards.append((label, fp))
+            groups[source].cards.append((label, fp, rec.get('essence') or ''))
 
         for source, group in groups.items():
-            card_recs = [(fp, card_records[fp]) for _, fp in group.cards if fp in card_records]
+            card_recs = [(fp, card_records[fp]) for _, fp, _ in group.cards if fp in card_records]
             summary = [(fp, r) for fp, r in card_recs if is_file_summary(r)]
             topic = [(fp, r) for fp, r in card_recs if not is_file_summary(r)]
 

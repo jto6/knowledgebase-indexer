@@ -88,7 +88,7 @@ class CardGroup:
     """
     annotation: str = ""
     hidden_card: Optional[str] = None    # absolute path of file_summary card to suppress
-    cards: List[tuple] = field(default_factory=list)   # [(label, card_path)]
+    cards: List[tuple] = field(default_factory=list)   # [(label, card_path, essence)]
 
 
 @dataclass

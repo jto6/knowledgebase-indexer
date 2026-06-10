@@ -154,7 +154,7 @@ class MarkdownIndexRenderer:
                     annotation = f" — {group.annotation}" if group.annotation else ""
                     lines.append("\t" * depth + f"- {self._link(source_label, e['path'])}{annotation}")
                     visible = [
-                        (lbl, cp) for lbl, cp in group.cards
+                        (lbl, cp) for lbl, cp, *_ in group.cards
                         if cp != group.hidden_card
                     ]
                     for lbl, cp in sorted(visible, key=lambda x: x[0].lower()):
