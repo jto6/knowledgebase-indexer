@@ -95,6 +95,12 @@ class ConfigLoader:
             jsonschema.validate(config, schema)
         except jsonschema.ValidationError as e:
             raise ValueError(f"Configuration validation error: {e.message}")
+        types = config.get("types") or {}
+        if "include" in types and "exclude" in types:
+            raise ValueError(
+                "Configuration validation error: 'types' must use either "
+                "'include' or 'exclude', not both"
+            )
     
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration."""
