@@ -68,11 +68,13 @@ Optional:
 
 - `slug` — readable alias for the card (kebab-case). Used in `builds_on` and link
   targets for readability; resolves to `id` underneath.
-- `kind` — card role. Absent (the default) means a **topic card**. The only
-  other value today is `file_summary`, marking the card as a file-level summary
-  for its `source` (see §1.7); the renderer treats a `file_summary` card as the
-  FS-view file-node annotation rather than a leaf. At most one `file_summary`
-  card may exist per source.
+- `kind` — card role. Absent (the default) means a **topic card**. Valid values:
+  - `file_summary` — marks the card as a file-level summary for its `source` (see
+    §1.7). At most one per source. The renderer uses its essence to annotate the
+    source's file node and does not render it as a leaf.
+  - `dir_summary` — marks the card as a directory-level summary (see §1.8). At
+    most one per directory. The renderer uses its essence to annotate the directory
+    node and does not render it as a leaf.
 - `builds_on` — list of card ids/slugs this card depends on (prerequisite edges).
 - `defines` — terms this card is the canonical home for (feeds the glossary and
   `[[term]]` link resolution).
@@ -191,6 +193,32 @@ Authoring rules:
   re-segmented, the file-summary card is regenerated in the same pass.
 - **At most one** `file_summary` card per source.
 
+### 1.8 Directory-summary cards (`kind: dir_summary`)
+
+When a directory contains multiple distinct sources, the directory as a whole can
+have a collective essence that its individual file cards do not carry — "what this
+directory is about." That essence is captured as a **directory-summary card**: the
+same `.kb.md` shape, in the same `.kb/` directory, identified by frontmatter
+`kind: dir_summary`.
+
+Authoring rules (handled by `/kb-card`, documented here for completeness):
+
+- **Opt-in** at the area level via `kb.yml` `dir_summary: auto|on|off` (§2.1),
+  or per run via `/kb-card -dir-summary` / `-no-dir-summary` (§4.1).
+- **N=1 short-circuit.** When a directory contains only one distinct source (after
+  deduplication and format-export collapsing), no dir_summary card is written — the
+  lone source's file_summary (or topic card) already serves as the directory
+  annotation.
+- **Filename:** `<dirname>.kb.md` — the directory's basename. For example, for a
+  `reports/` directory: `reports/.kb/reports.kb.md`.
+- **Scope:** the directory as a whole. `source: ..` (the directory, relative to
+  `.kb/`). No `scope` field. The body synthesizes the directory's overall theme,
+  not a file-by-file TOC.
+- **Refresh:** tracked via `dir_hash` in `segmentation.yml` — a hash of the
+  sorted `source_hash` values for all sources in the directory. Regenerated only
+  when that hash changes.
+- **At most one** `dir_summary` card per directory.
+
 ## 2. Area Config — `kb.yml`
 
 One per knowledge-base area, at `<area>/.kb/kb.yml`. It declares policy for the
@@ -234,6 +262,10 @@ Optional:
   behavior can be flipped later without a breaking config change. The N=1
   short-circuit applies regardless: a file producing only one topic card never
   gets a separate summary card.
+- `dir_summary` — `auto | on | off` (default `auto`, which currently resolves
+  to `on`). Controls whether `/kb-card` may author a `kind: dir_summary` card
+  per directory (see §1.8). The N=1 short-circuit applies regardless: a
+  directory with only one distinct source never gets a separate summary card.
 - `draws_on` — list of upstream domains this area subscribes to (drives consumer
   wiring; rendered as a cross-domain edge).
 
@@ -279,6 +311,14 @@ it is *not* an index of cards (that is the cards themselves, plus
 - `density` — the directory's effective depth (`coarse|normal|fine|exhaustive`).
 - `density_overrides` — optional list of per-`(source, section)` depth directives
   (non-uniform depth). Each entry: `source`, `section`, `density`.
+- `dir_fingerprint` — `sha256:<hex>`. A lightweight hash of `{filename, size,
+  mtime_ns}` tuples for all non-hidden source files in the directory (all files
+  outside `.kb/`), sorted by filename. Written (or updated) every time `/kb-card`
+  successfully runs on the directory. **This is the staleness signal for `kbi
+  --update`** (§5.7): kbi recomputes the fingerprint from `os.stat()` calls — no
+  file reads needed — and compares it to the stored value. A mismatch means at
+  least one file was added, removed, renamed, resized, or touched since the last
+  `/kb-card` run.
 - `cards` — the list of card entries.
 
 ### 3.2 Card entry fields
@@ -296,6 +336,10 @@ it is *not* an index of cards (that is the cards themselves, plus
   invalidates it. It is not immutable.
 - `source_hash` — `sha256:<hex>` of the source at last author/refresh; drives
   drift detection.
+- `dir_hash` — present only on `kind: dir_summary` entries. `sha256:<hex>` of the
+  sorted `source_hash` values for all sources in the directory at the time the
+  dir_summary was last authored. `/kb-card` uses this to decide whether to
+  regenerate the dir_summary card on a re-run, without re-reading card bodies.
 
 ### 3.3 Reconcile semantics
 
@@ -309,6 +353,7 @@ Decisions are refined, never redone.
 version: 1
 updated: 2026-06-07
 density: fine
+dir_fingerprint: sha256:a1b2c3d4...   # recomputed by kbi --update for staleness check
 density_overrides:
   - source: ../reports/foo.pdf
     section: "Architecture"
@@ -324,6 +369,13 @@ cards:
     title: 'Foo: Architecture'
     locked: true
     source_hash: sha256:8aae357d...
+  - slug: reports-dir
+    id: 9e4f0000-0000-0000-0000-000000000000
+    file: reports.kb.md
+    kind: dir_summary
+    source: ..
+    title: Reports
+    dir_hash: sha256:7f3c19a2...     # hash of sorted source_hashes; refresh trigger
 ```
 
 ## 4. The `/kb-card` Command (author-side)
@@ -357,6 +409,9 @@ manual review. It does **not** run `kbi`.
   `kb.yml file_summary` setting (§2.1). The N=1 short-circuit applies even
   with `-file-summary`: a source producing only one topic card never gets a
   separate summary card. See §1.7.
+- `-dir-summary` / `-no-dir-summary` — per-run override of the area's
+  `kb.yml dir_summary` setting (§2.1). The N=1 short-circuit applies even with
+  `-dir-summary`. See §1.8.
 - `-domain` / `-level` / `-quotes` / `-no-quotes` — override domain / profile.
 
 ### 4.2 Granularity model (three dials)
@@ -385,6 +440,11 @@ All three are *optional overrides* of the adaptive proposal; omit them to let
 3. **Author/refresh:** distill each new/refreshed/re-segmented scope per the
    profile; reconcile tags; extract `meta`; assemble frontmatter; linkify known
    terms; write the card.
+3b. **Dir-summary:** after all per-source cards are written for a directory, if
+    `dir_summary` is `on` and the directory has ≥2 distinct sources, compute
+    `dir_hash = sha256(sorted source_hash values)`. If the existing dir_summary card
+    entry records a matching `dir_hash`, skip. Otherwise author or refresh the
+    dir_summary card.
 4. Retire orphans; report. (Does not run `kbi`.)
 
 ### 4.4 Reconcile outcomes
@@ -482,12 +542,17 @@ Within each domain, every **view** is a *key → file-location* mapping — a
 navigational index that links to files, it does not contain their content (open a
 linked file to read it):
 
-- **File System** — directory tree → file links. File nodes are annotated with
-  a one-line summary chosen as follows: if a `kind: file_summary` card exists
-  for that source, use its `>` essence and *do not* render that card as a
-  leaf; else if exactly one topic card exists for that source, use that card's
-  essence (and still render it as a leaf); else (≥2 topic cards, no
-  file-summary card) the file node has no annotation. See §1.7.
+- **File System** — directory tree → file links.
+
+  *Directory node annotation:* if a `kind: dir_summary` card exists whose
+  `source` resolves to that directory, annotate the directory node with its `>`
+  essence and do **not** render the dir_summary card as a child leaf. See §1.8.
+
+  *File node annotation:* if a `kind: file_summary` card exists for that source,
+  use its `>` essence and do not render that card as a leaf; else if exactly one
+  topic card exists for that source, use that card's essence (and still render it
+  as a leaf); else (≥2 topic cards, no file_summary card) the file node has no
+  annotation. See §1.7.
 - **Word** — significant word → file links. **Opt-in** (off by default); see §5.6
   for the preferred ad-hoc alternative.
 - **Keyword** — keyword hierarchy (from `keywords.files`) → file links.
@@ -552,6 +617,36 @@ indexed set, with nothing pre-materialised.
 kbi.py search configs/Study25.yml "a-core" -i        # case-insensitive
 kbi.py search configs/Study25.yml "TODO|FIXME" -l    # list matching files only
 ```
+
+### 5.7 `kbi --update` — auto-refresh stale cards before indexing
+
+```
+python3 kbi.py --update <config.yml>
+```
+
+`--update` resolves the same directory set the config would index, then for each
+directory that contains a `.kb/segmentation.yml`:
+
+1. **Compute the current `dir_fingerprint`**: hash of sorted
+   `{filename, size, mtime_ns}` tuples for all non-hidden files outside `.kb/`
+   in that directory. This is pure `os.stat()` — no file reads.
+2. **Compare** to the `dir_fingerprint` stored in `segmentation.yml`.
+3. If they differ (or `segmentation.yml` is absent, or has no `dir_fingerprint`):
+   mark the directory **stale**.
+4. For each stale directory, invoke:
+   ```
+   claude -p /kb-card <dir-path>
+   ```
+   Wait for completion before proceeding to the next directory.
+5. After all stale directories are refreshed, proceed with normal indexing.
+
+If `--update` is combined with a normal index run, the refresh pass runs first.
+A directory without a `segmentation.yml` (no cards authored yet) is skipped —
+`--update` updates existing card sets; it does not bootstrap new areas.
+
+**Note:** `claude -p /kb-card` uses the slow path (Claude CLI). On large trees
+with many stale directories, this can be slow. `--update` is intended for
+scheduled or pre-commit use, not interactive indexing.
 
 ## 6. Consumer Subscription Model
 

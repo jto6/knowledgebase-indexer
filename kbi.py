@@ -15,8 +15,10 @@ planned). The four views are:
 import sys
 import argparse
 import glob
+import hashlib
 import os
 import fnmatch
+import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import traceback
@@ -36,7 +38,7 @@ from keywords import load_keyword_files, KeywordProcessor
 from mindmap_generator import FreeplaneMapGenerator
 from markdown_renderer import MarkdownIndexRenderer
 from index_model import file_is_generated, CardGroup
-from handlers.card_handler import is_file_summary
+from handlers.card_handler import is_file_summary, is_dir_summary
 from word_filter import SignificantWordFilter
 from logging_config import AppLogger, LoggedOperation, create_component_logger
 
@@ -249,13 +251,19 @@ class KnowledgebaseIndexer:
         
         return handlers
     
-    def build_file_system_index(self, files: List[str], handlers: Dict[str, Any]) -> Dict[str, List[HierarchicalNode]]:
+    def build_file_system_index(self, files: List[str], handlers: Dict[str, Any],
+                               exported_paths: Optional[set] = None) -> Dict[str, List[HierarchicalNode]]:
         """Build hierarchical file system index for non-card files.
 
         Card files are excluded here — they appear in `build_card_groups` instead,
         grouped under their source path with FS-view annotations (D21).
+
+        `exported_paths` is the set of absolute paths that are format-export
+        derivatives (e.g. a .pdf exported from a .pptx). They carry no independent
+        content and are suppressed from the FS view.
         """
         file_system_index = {}
+        skip = exported_paths or set()
 
         for file_path in files:
             handler = handlers.get(file_path)
@@ -263,6 +271,8 @@ class KnowledgebaseIndexer:
                 continue
             if isinstance(handler, CardHandler):
                 continue  # cards go through build_card_groups
+            if file_path in skip:
+                continue  # format-export derivative — absorbed by its source card group
 
             try:
                 root_nodes = handler.get_root_nodes(file_path)
@@ -277,6 +287,41 @@ class KnowledgebaseIndexer:
                 continue
 
         return file_system_index
+
+    @staticmethod
+    def _resolve_path_list(card_record: Dict[str, Any], field: str) -> List[str]:
+        """Resolve a frontmatter list field of relative paths to absolute paths.
+
+        Used for `exported_as` and `refines`. Returns a (possibly empty) list;
+        URL entries are silently dropped.
+        """
+        file_path = card_record.get('file_path', '')
+        raw = card_record.get(field) or []
+        if isinstance(raw, str):
+            raw = [raw]
+        card_dir = Path(file_path).parent
+        result = []
+        for entry in raw:
+            s = str(entry).strip()
+            if not s or s.startswith(('http://', 'https://')):
+                continue
+            result.append(str((card_dir / s).resolve()))
+        return result
+
+    @staticmethod
+    def _resolve_exported_as(card_record: Dict[str, Any]) -> List[str]:
+        """Resolve the `exported_as` frontmatter list to absolute filesystem paths."""
+        return KnowledgebaseIndexer._resolve_path_list(card_record, 'exported_as')
+
+    @staticmethod
+    def _resolve_refines(card_record: Dict[str, Any]) -> List[str]:
+        """Resolve the `refines` frontmatter list to absolute filesystem paths.
+
+        `refines` lists the superseded/absorbed source files that were folded into
+        this canonical card. Those files carry no independent content and are
+        suppressed from the FS view.
+        """
+        return KnowledgebaseIndexer._resolve_path_list(card_record, 'refines')
 
     @staticmethod
     def _resolve_card_source(card_record: Dict[str, Any]) -> Optional[str]:
@@ -320,6 +365,8 @@ class KnowledgebaseIndexer:
             rec = card_records.get(fp)
             if not rec:
                 continue
+            if is_dir_summary(rec):
+                continue  # dir_summary cards annotate directory nodes, not file groups
             source = self._resolve_card_source(rec)
             if source is None:
                 source = str(Path(fp).parent.parent.resolve())
@@ -327,6 +374,12 @@ class KnowledgebaseIndexer:
                 groups[source] = CardGroup()
             label = rec.get('title') or Path(fp).name
             groups[source].cards.append((label, fp, rec.get('essence') or ''))
+            for exp_path in self._resolve_exported_as(rec):
+                if exp_path not in groups[source].exported_as:
+                    groups[source].exported_as.append(exp_path)
+            for ref_path in self._resolve_refines(rec):
+                if ref_path not in groups[source].refines:
+                    groups[source].refines.append(ref_path)
 
         for source, group in groups.items():
             card_recs = [(fp, card_records[fp]) for _, fp, _ in group.cards if fp in card_records]
@@ -343,7 +396,91 @@ class KnowledgebaseIndexer:
                 group.hidden_card = None
 
         return groups
-    
+
+    def build_dir_annotations(self, bfiles: List[str], card_records: Dict[str, Any]) -> Dict[str, str]:
+        """Build abs_dir_path → essence mapping from kind: dir_summary cards."""
+        dir_annotations: Dict[str, str] = {}
+        for fp in bfiles:
+            rec = card_records.get(fp)
+            if not rec or not is_dir_summary(rec):
+                continue
+            dir_path = self._resolve_card_source(rec)
+            if dir_path is None:
+                dir_path = str(Path(fp).parent.parent.resolve())
+            essence = rec.get('essence', '')
+            if essence:
+                dir_annotations[dir_path] = essence
+        return dir_annotations
+
+    @staticmethod
+    def _compute_dir_fingerprint(directory: str) -> str:
+        """SHA-256 hash of sorted {filename,size,mtime_ns} for non-hidden files outside .kb/."""
+        entries = []
+        try:
+            for name in sorted(os.listdir(directory)):
+                if name.startswith('.'):
+                    continue
+                full = os.path.join(directory, name)
+                if os.path.isfile(full):
+                    st = os.stat(full)
+                    entries.append(f"{name},{st.st_size},{st.st_mtime_ns}\n")
+        except OSError:
+            pass
+        digest = hashlib.sha256("".join(entries).encode()).hexdigest()
+        return f"sha256:{digest}"
+
+    def run_update(self, config: Dict[str, Any]) -> None:
+        """Refresh stale card sets before indexing.
+
+        For every directory under the include paths that has a
+        `.kb/segmentation.yml` with a `dir_fingerprint` field, recompute
+        the fingerprint and invoke `claude -p /kb-card <dir>` when stale.
+        Directories without a `segmentation.yml` are skipped entirely.
+        """
+        try:
+            import yaml as _yaml
+        except ImportError:
+            print("Warning: PyYAML not available; --update skipped", file=sys.stderr)
+            return
+
+        include_dirs = (config.get('directories', {}) or {}).get('include', ['.'])
+        if not include_dirs:
+            include_dirs = ['.']
+
+        visited = set()
+        stale = []
+
+        for inc in include_dirs:
+            inc_path = Path(inc).resolve()
+            for root, dirs, _files in os.walk(str(inc_path)):
+                dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
+                seg_yml = Path(root) / '.kb' / 'segmentation.yml'
+                if not seg_yml.exists():
+                    continue
+                abs_dir = str(Path(root).resolve())
+                if abs_dir in visited:
+                    continue
+                visited.add(abs_dir)
+                try:
+                    seg = _yaml.safe_load(seg_yml.read_text(encoding='utf-8')) or {}
+                except Exception:
+                    seg = {}
+                stored = seg.get('dir_fingerprint', '')
+                current = self._compute_dir_fingerprint(abs_dir)
+                if current != stored:
+                    stale.append(abs_dir)
+
+        if not stale:
+            if self.debug:
+                print("--update: all directories are current")
+            return
+
+        for d in stale:
+            print(f"--update: refreshing {d}")
+            rc = subprocess.run(['claude', '-p', '/kb-card', d]).returncode
+            if rc != 0:
+                print(f"Warning: /kb-card returned {rc} for {d}", file=sys.stderr)
+
     def process_keyword_searches(self, files: List[str], handlers: Dict[str, Any]) -> List[Any]:
         """Process keyword-based searches and return hierarchical keyword entries with results."""
         keyword_files = self.config.get('keywords', {}).get('files', [])
@@ -582,11 +719,19 @@ class KnowledgebaseIndexer:
             if rec.get('id'):
                 card_by_key[str(rec['id'])] = rec
 
+        # Pre-compute the set of all absorbed paths (format-export derivatives and
+        # superseded/refined sources) so they can be suppressed from the FS view.
+        all_exported: set = set()
+        for rec in card_records.values():
+            all_exported.update(self._resolve_exported_as(rec))
+            all_exported.update(self._resolve_refines(rec))
+
         model = IndexModel(partitioned=partitioned)
         for name, bfiles in buckets.items():
             di = DomainIndex(name=name, files=bfiles)
-            di.file_system = self.build_file_system_index(bfiles, handlers)
+            di.file_system = self.build_file_system_index(bfiles, handlers, all_exported)
             di.card_groups = self.build_card_groups(bfiles, card_records)
+            di.dir_annotations = self.build_dir_annotations(bfiles, card_records)
             di.keyword_entries = self.process_keyword_searches(bfiles, handlers)
             di.tags = self.extract_tags(bfiles, handlers)
             di.words = self.extract_significant_words(bfiles, handlers) if word_on else {}
@@ -765,6 +910,12 @@ Examples:
     )
     
     parser.add_argument(
+        '--update',
+        action='store_true',
+        help='Refresh stale card sets (via claude -p /kb-card) before indexing'
+    )
+
+    parser.add_argument(
         '--sample-config',
         nargs='?', const='kbi.yml', default=None, metavar='PATH',
         help='Write a sample configuration file (default: kbi.yml) and exit'
@@ -861,11 +1012,14 @@ output:
             main_logger.info(f"Output file overridden: {args.output}")
         
         # Create and run generator
-        with LoggedOperation('startup', 'full_index_generation', 
+        with LoggedOperation('startup', 'full_index_generation',
                            {'output_file': config['output']['file']}) as op:
             generator = KnowledgebaseIndexer(config)
             generator.set_debug(args.debug)
-            
+
+            if args.update:
+                generator.run_update(config)
+
             output_path = generator.run()
         
         main_logger.info(f"Index generation completed successfully: {output_path}")

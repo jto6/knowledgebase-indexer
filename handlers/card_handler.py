@@ -33,15 +33,21 @@ except ImportError:  # pragma: no cover - yaml is a declared dependency
 
 CARD_SUFFIX = '.kb.md'
 
-# Card roles. Absent (the default) is a "topic" card; `file_summary` marks the
-# card as the file-level summary for its `source` (D21). The renderer treats a
-# `file_summary` card as the FS-view file-node annotation rather than a leaf.
+# Card roles. Absent (the default) is a "topic" card.
+# `file_summary`: FS-view file-node annotation (D21) — suppressed as a leaf.
+# `dir_summary`: FS-view directory-node annotation — suppressed as a leaf.
 KIND_FILE_SUMMARY = 'file_summary'
+KIND_DIR_SUMMARY = 'dir_summary'
 
 
 def is_file_summary(card_record: Dict[str, Any]) -> bool:
     """True iff the card record's frontmatter declares `kind: file_summary`."""
     return card_record.get('kind') == KIND_FILE_SUMMARY
+
+
+def is_dir_summary(card_record: Dict[str, Any]) -> bool:
+    """True iff the card record's frontmatter declares `kind: dir_summary`."""
+    return card_record.get('kind') == KIND_DIR_SUMMARY
 
 
 class CardHandler(MarkdownHandler):

@@ -154,7 +154,8 @@ class FreeplaneMapGenerator:
         r = 'freeplane'
         if (di.file_system or di.card_groups) and view_enabled(config, VIEW_FILE_SYSTEM, r):
             self._create_file_system_index(parent, di.file_system,
-                                           getattr(di, 'card_groups', {}))
+                                           getattr(di, 'card_groups', {}),
+                                           getattr(di, 'dir_annotations', {}))
         if di.keyword_entries and view_enabled(config, VIEW_KEYWORD, r):
             self._create_keyword_index(parent, di.keyword_entries)
         if di.tags and view_enabled(config, VIEW_TAG, r):
@@ -201,15 +202,18 @@ class FreeplaneMapGenerator:
 
     def _create_file_system_index(self, parent: ET.Element,
                                 file_system_index: Dict[str, List[HierarchicalNode]],
-                                card_groups=None) -> ET.Element:
+                                card_groups=None, dir_annotations=None) -> ET.Element:
         """Create file system navigation index.
 
         Non-card files appear as leaf nodes (unchanged). Cards are grouped under
         their source path: the source node is annotated with an essence when
-        available, and topic cards appear as children (D21).
+        available, and topic cards appear as children (D21). Directory nodes are
+        annotated with dir_summary essence when available.
         """
         if card_groups is None:
             card_groups = {}
+        if dir_annotations is None:
+            dir_annotations = {}
         fs_root = ET.SubElement(parent, 'node', {
             'ID': self._generate_unique_id(),
             'CREATED': get_current_timestamp(),
@@ -218,8 +222,11 @@ class FreeplaneMapGenerator:
         })
 
         all_paths = list(file_system_index.keys()) + list(card_groups.keys())
+        common_prefix_parts = self._find_common_path_prefix(all_paths)
+        abs_base = str(Path(*common_prefix_parts)) if common_prefix_parts else "/"
         dir_structure = self._build_directory_structure(all_paths)
-        self._create_directory_nodes(fs_root, dir_structure, file_system_index, card_groups)
+        self._create_directory_nodes(fs_root, dir_structure, file_system_index, card_groups,
+                                     dir_annotations=dir_annotations, current_abs_dir=abs_base)
         return fs_root
     
     def _build_directory_structure(self, file_paths: List[str]) -> Dict[str, Any]:
@@ -297,10 +304,12 @@ class FreeplaneMapGenerator:
     
     def _create_directory_nodes(self, parent: ET.Element, structure: Dict[str, Any],
                               file_index: Dict[str, List[HierarchicalNode]],
-                              card_groups=None):
+                              card_groups=None, dir_annotations=None, current_abs_dir=None):
         """Recursively create directory and file nodes."""
         if card_groups is None:
             card_groups = {}
+        if dir_annotations is None:
+            dir_annotations = {}
 
         # Files at this level (regular non-card files)
         if '_files' in structure:
@@ -328,9 +337,17 @@ class FreeplaneMapGenerator:
                 'TEXT': dir_name
             })
 
+            if current_abs_dir is not None:
+                abs_dir = os.path.join(current_abs_dir, dir_name)
+                self._add_details(dir_node, dir_annotations.get(abs_dir, ''))
+            else:
+                abs_dir = None
+
             if '_dirs' in dir_data:
                 self._create_directory_nodes(dir_node, dir_data['_dirs'],
-                                             file_index, card_groups)
+                                             file_index, card_groups,
+                                             dir_annotations=dir_annotations,
+                                             current_abs_dir=abs_dir)
             if '_files' in dir_data:
                 for file_path in sorted(dir_data['_files']):
                     if Path(file_path).resolve() == self.output_path.resolve():

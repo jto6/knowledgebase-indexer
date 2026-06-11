@@ -62,7 +62,8 @@ class MarkdownIndexRenderer:
         parts: List[str] = []
         has_fs = di.file_system or di.card_groups
         if has_fs and view_enabled(self.config, VIEW_FILE_SYSTEM, RENDERER):
-            parts.append(self._render_file_system(di.file_system, di.card_groups))
+            parts.append(self._render_file_system(di.file_system, di.card_groups,
+                                                  getattr(di, 'dir_annotations', {})))
         if di.keyword_entries and view_enabled(self.config, VIEW_KEYWORD, RENDERER):
             parts.append(self._render_keyword(di.keyword_entries))
         if di.tags and view_enabled(self.config, VIEW_TAG, RENDERER):
@@ -107,16 +108,20 @@ class MarkdownIndexRenderer:
 
     # -- views ---------------------------------------------------------------
 
-    def _render_file_system(self, file_system: Dict[str, list], card_groups=None) -> str:
+    def _render_file_system(self, file_system: Dict[str, list], card_groups=None,
+                            dir_annotations=None) -> str:
         """Render the File System view.
 
         Non-card files appear as leaf links (unchanged). Cards are grouped under
         their source path: the source node is annotated with an essence line
         when available (from a `kind: file_summary` card or a lone topic card),
         and each topic card appears as a child leaf under the source node (D21).
+        Directory nodes are annotated with dir_summary essence when available.
         """
         if card_groups is None:
             card_groups = {}
+        if dir_annotations is None:
+            dir_annotations = {}
 
         all_paths = list(file_system.keys()) + list(card_groups.keys())
         if not all_paths:
@@ -142,7 +147,7 @@ class MarkdownIndexRenderer:
 
         lines = ["## File System", "", f"Base: `{base}`", ""]
 
-        def walk(node, depth):
+        def walk(node, depth, current_abs_dir):
             entries = sorted(node.get("__entries__", []), key=lambda e: e["name"])
             for e in entries:
                 if e["kind"] == "file":
@@ -160,10 +165,13 @@ class MarkdownIndexRenderer:
                     for lbl, cp in sorted(visible, key=lambda x: x[0].lower()):
                         lines.append("\t" * (depth + 1) + f"- {self._link(lbl, cp)}")
             for d in sorted(k for k in node if k != "__entries__"):
-                lines.append("\t" * depth + f"- {d}/")
-                walk(node[d], depth + 1)
+                abs_dir = os.path.join(current_abs_dir, d)
+                annotation = dir_annotations.get(abs_dir, "")
+                dir_suffix = f"/ — {annotation}" if annotation else "/"
+                lines.append("\t" * depth + f"- {d}{dir_suffix}")
+                walk(node[d], depth + 1, abs_dir)
 
-        walk(tree, 0)
+        walk(tree, 0, base)
         return "\n".join(lines) + "\n"
 
     def _render_tags(self, tags: Dict[str, list]) -> str:

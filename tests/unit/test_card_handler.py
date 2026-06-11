@@ -20,6 +20,7 @@ from config import ConfigLoader
 from core_handlers import HandlerRegistry
 from handlers.card_handler import CardHandler
 from handlers.markdown_handler import MarkdownHandler
+from kbi import KnowledgebaseIndexer
 
 
 CARD_TEXT = """---
@@ -163,3 +164,240 @@ class TestTypeSelection:
         assert set(self._indexer()._enabled_types()) == {"card", "markdown", "freeplane"}
         assert self._indexer({"include": ["card"]})._enabled_types() == ["card"]
         assert set(self._indexer({"exclude": ["card"]})._enabled_types()) == {"markdown", "freeplane"}
+
+
+@pytest.mark.quick
+class TestExportedAs:
+    """Format-export pairs: `exported_as` field parsed and export paths suppressed from FS view."""
+
+    CARD_WITH_EXPORT = """---
+title: Slide Deck
+source: ../reports/deck.pptx
+exported_as:
+  - ../reports/deck.pdf
+---
+
+# Slide Deck
+
+> Overview of the project.
+"""
+
+    def _indexer(self):
+        cfg = {"directories": {"include": ["."]}, "output": {"file": "o", "format": "markdown"}}
+        return KnowledgebaseIndexer(cfg)
+
+    def test_resolve_exported_as_returns_absolute_paths(self, tmp_path):
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "Deck.kb.md"
+        card.write_text(self.CARD_WITH_EXPORT, encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        paths = KnowledgebaseIndexer._resolve_exported_as(rec)
+        assert len(paths) == 1
+        assert paths[0] == str((tmp_path / "reports" / "deck.pdf").resolve())
+
+    def test_resolve_exported_as_empty_when_absent(self, tmp_path):
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "NoExport.kb.md"
+        card.write_text("---\ntitle: Plain\nsource: ../doc.md\n---\n# Plain\n", encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        assert KnowledgebaseIndexer._resolve_exported_as(rec) == []
+
+    def test_exported_as_suppressed_from_fs_view(self, tmp_path):
+        """A file listed in exported_as must not appear in build_file_system_index."""
+        # Set up: source .pptx, exported .pdf, and a card pointing to both.
+        reports = tmp_path / "reports"; reports.mkdir()
+        pptx = reports / "deck.pptx"; pptx.write_text("(binary)", encoding="utf-8")
+        pdf = reports / "deck.pdf"; pdf.write_text("(binary)", encoding="utf-8")
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "Deck.kb.md"
+        card.write_text(self.CARD_WITH_EXPORT, encoding="utf-8")
+
+        indexer = self._indexer()
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        exported = set(KnowledgebaseIndexer._resolve_exported_as(rec))
+
+        from handlers.markdown_handler import MarkdownHandler
+        md_handler = MarkdownHandler({"extensions": [".md"]})
+        # Simulate the handlers dict with a non-card handler for the pdf path.
+        # (In real use the pdf would have no handler; here we use markdown as a
+        # stand-in to verify the suppression logic, not handler assignment.)
+        handlers = {str(pdf): md_handler}
+        fs = indexer.build_file_system_index([str(pdf)], handlers, exported)
+        assert str(pdf) not in fs
+
+    def test_exported_as_stored_in_card_group(self, tmp_path):
+        """build_card_groups populates CardGroup.exported_as from the card record."""
+        reports = tmp_path / "reports"; reports.mkdir()
+        (reports / "deck.pptx").write_text("", encoding="utf-8")
+        pdf = reports / "deck.pdf"; pdf.write_text("", encoding="utf-8")
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "Deck.kb.md"
+        card.write_text(self.CARD_WITH_EXPORT, encoding="utf-8")
+
+        indexer = self._indexer()
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        card_records = {str(card): rec}
+        groups = indexer.build_card_groups([str(card)], card_records)
+
+        # The group keyed by the source path must list the pdf as exported_as.
+        source_path = str((tmp_path / "reports" / "deck.pptx").resolve())
+        assert source_path in groups
+        assert str(pdf.resolve()) in groups[source_path].exported_as
+
+
+@pytest.mark.quick
+class TestRefines:
+    """Near-duplicate/refinement: `refines` field parsed and superseded paths suppressed from FS view."""
+
+    CARD_WITH_REFINES = """---
+title: Spec Final
+source: ../docs/spec_final.md
+refines:
+  - ../docs/spec_v1.md
+  - ../docs/spec_draft.md
+---
+
+# Spec Final
+
+> The definitive specification.
+"""
+
+    def _indexer(self):
+        cfg = {"directories": {"include": ["."]}, "output": {"file": "o", "format": "markdown"}}
+        return KnowledgebaseIndexer(cfg)
+
+    def test_resolve_refines_returns_absolute_paths(self, tmp_path):
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "Spec.kb.md"
+        card.write_text(self.CARD_WITH_REFINES, encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        paths = KnowledgebaseIndexer._resolve_refines(rec)
+        assert len(paths) == 2
+        assert paths[0] == str((tmp_path / "docs" / "spec_v1.md").resolve())
+        assert paths[1] == str((tmp_path / "docs" / "spec_draft.md").resolve())
+
+    def test_resolve_refines_empty_when_absent(self, tmp_path):
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "NoRefines.kb.md"
+        card.write_text("---\ntitle: Plain\nsource: ../doc.md\n---\n# Plain\n", encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        assert KnowledgebaseIndexer._resolve_refines(rec) == []
+
+    def test_superseded_sources_suppressed_from_fs_view(self, tmp_path):
+        """Files listed in refines must not appear in build_file_system_index."""
+        docs = tmp_path / "docs"; docs.mkdir()
+        v1 = docs / "spec_v1.md"; v1.write_text("# v1\n", encoding="utf-8")
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "Spec.kb.md"
+        card.write_text(self.CARD_WITH_REFINES, encoding="utf-8")
+
+        indexer = self._indexer()
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        absorbed = set(KnowledgebaseIndexer._resolve_refines(rec))
+
+        from handlers.markdown_handler import MarkdownHandler
+        md_handler = MarkdownHandler({"extensions": [".md"]})
+        handlers = {str(v1): md_handler}
+        fs = indexer.build_file_system_index([str(v1)], handlers, absorbed)
+        assert str(v1) not in fs
+
+    def test_refines_stored_in_card_group(self, tmp_path):
+        """build_card_groups populates CardGroup.refines from the card record."""
+        docs = tmp_path / "docs"; docs.mkdir()
+        final = docs / "spec_final.md"; final.write_text("# Final\n", encoding="utf-8")
+        v1 = docs / "spec_v1.md"; v1.write_text("# v1\n", encoding="utf-8")
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "Spec.kb.md"
+        card.write_text(self.CARD_WITH_REFINES, encoding="utf-8")
+
+        indexer = self._indexer()
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        card_records = {str(card): rec}
+        groups = indexer.build_card_groups([str(card)], card_records)
+
+        source_path = str(final.resolve())
+        assert source_path in groups
+        assert str(v1.resolve()) in groups[source_path].refines
+
+
+@pytest.mark.quick
+class TestDirSummary:
+    """Directory-summary cards: recognized, dir annotation extracted, not in card_groups."""
+
+    DIR_SUMMARY_CARD = """---
+title: Reports Directory
+kind: dir_summary
+source: ..
+---
+
+# Reports Directory
+
+> A collection of quarterly financial reports.
+"""
+
+    def _indexer(self):
+        cfg = {"directories": {"include": ["."]}, "output": {"file": "o", "format": "markdown"}}
+        return KnowledgebaseIndexer(cfg)
+
+    def test_is_dir_summary_true_for_dir_summary_kind(self, tmp_path):
+        from handlers.card_handler import is_dir_summary
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "reports.kb.md"
+        card.write_text(self.DIR_SUMMARY_CARD, encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        assert is_dir_summary(rec) is True
+
+    def test_is_dir_summary_false_for_topic_card(self, tmp_path):
+        from handlers.card_handler import is_dir_summary
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "Plan.kb.md"
+        card.write_text("---\ntitle: Plan\nsource: ../Plan.md\n---\n# Plan\n\n> A plan.\n",
+                        encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        assert is_dir_summary(rec) is False
+
+    def test_dir_summary_not_in_card_groups(self, tmp_path):
+        """build_card_groups must skip dir_summary cards entirely."""
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "reports.kb.md"
+        card.write_text(self.DIR_SUMMARY_CARD, encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        indexer = self._indexer()
+        groups = indexer.build_card_groups([str(card)], {str(card): rec})
+        assert groups == {}
+
+    def test_dir_annotation_extracted_from_dir_summary_card(self, tmp_path):
+        """build_dir_annotations produces an abs_dir → essence entry."""
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "reports.kb.md"
+        card.write_text(self.DIR_SUMMARY_CARD, encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        indexer = self._indexer()
+        annotations = indexer.build_dir_annotations([str(card)], {str(card): rec})
+        expected_dir = str(tmp_path.resolve())
+        assert expected_dir in annotations
+        assert annotations[expected_dir] == "A collection of quarterly financial reports."
+
+    def test_no_annotation_when_no_dir_summary(self, tmp_path):
+        """build_dir_annotations returns empty dict when no dir_summary cards are present."""
+        kb = tmp_path / ".kb"; kb.mkdir()
+        card = kb / "Plan.kb.md"
+        card.write_text("---\ntitle: Plan\nsource: ../Plan.md\n---\n# Plan\n\n> A plan.\n",
+                        encoding="utf-8")
+        handler = CardHandler({"extensions": [".kb.md"]})
+        rec = handler.get_card_record(str(card))
+        indexer = self._indexer()
+        annotations = indexer.build_dir_annotations([str(card)], {str(card): rec})
+        assert annotations == {}

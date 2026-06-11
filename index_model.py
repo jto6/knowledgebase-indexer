@@ -85,10 +85,15 @@ class CardGroup:
       rendered as leaves even when they supply the annotation).
     - cards: list of (label, card_path) tuples for ALL cards (including the
       file_summary card if any). Renderers filter out `hidden_card`.
+    - exported_as: absolute paths of format-export derivatives (e.g. a .pdf
+      exported from the .pptx source). These carry no independent content and
+      are suppressed from the FS view.
     """
     annotation: str = ""
     hidden_card: Optional[str] = None    # absolute path of file_summary card to suppress
     cards: List[tuple] = field(default_factory=list)   # [(label, card_path, essence)]
+    exported_as: List[str] = field(default_factory=list)  # absolute paths of format-export derivatives
+    refines: List[str] = field(default_factory=list)       # absolute paths of superseded/absorbed sources
 
 
 @dataclass
@@ -103,6 +108,7 @@ class DomainIndex:
     words: Dict[str, dict] = field(default_factory=dict)         # word -> {file: matches}
     dependencies: list = field(default_factory=list)             # [(card_record, [(label, path)])]
     glossary: Dict[str, dict] = field(default_factory=dict)      # term -> card_record
+    dir_annotations: Dict[str, str] = field(default_factory=dict)  # abs_dir_path -> essence (from dir_summary cards)
 
 
 @dataclass
