@@ -1,9 +1,10 @@
-# Sample kbi configuration file
+# kbi configuration file for my TI Mac repositories - knowledge cards only
 directories:
   include:
     - "/Users/a0321960/Documents/MyMaps"
     - "/Users/a0321960/TIGoogleDrive/MyMaps"
     - "/Users/a0321960/dev/research"
+    - "/Users/a0321960/Documents/Projects/Execution"
   exclude:
     - "**/node_modules/**"
     - "**/.git/**"
@@ -17,7 +18,6 @@ keywords:
 
 output:
   format: "freeplane"
-  partition_by_domain: "off"  # flat index even though SDV-research carries a domain
 
 types:
-  exclude: [card]            # deep content index — exclude the .kb.md card summaries
+  include: [card]
