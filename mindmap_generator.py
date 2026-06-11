@@ -276,30 +276,41 @@ class FreeplaneMapGenerator:
         """Find common directory path prefix among all file paths (R-FS-007)."""
         if not file_paths:
             return ()
-        
+
         # Convert all paths to Path objects and get their parent directories
         dir_paths = [Path(file_path).parent for file_path in file_paths]
-        
+
         # Convert to parts tuples for comparison
         path_parts_list = [path.parts for path in dir_paths]
-        
+
         if not path_parts_list:
             return ()
-        
+
         # Find common prefix by comparing parts
         common_parts = []
         min_length = min(len(parts) for parts in path_parts_list)
-        
+
         for i in range(min_length):
             # Get the part at position i from the first path
             candidate_part = path_parts_list[0][i]
-            
+
             # Check if all paths have the same part at this position
             if all(parts[i] == candidate_part for parts in path_parts_list):
                 common_parts.append(candidate_part)
             else:
                 break
-        
+
+        # If all files sit in exactly the same directory the computed prefix equals
+        # that directory, and stripping it yields only bare filenames — no directory
+        # node appears in the tree.  Retract one level so the shared directory
+        # becomes the visible root of the FS tree rather than disappearing entirely.
+        if len(common_parts) > 1:
+            all_same_dir = all(
+                Path(fp).parent.parts == tuple(common_parts) for fp in file_paths
+            )
+            if all_same_dir:
+                common_parts = common_parts[:-1]
+
         return tuple(common_parts)
     
     def _create_directory_nodes(self, parent: ET.Element, structure: Dict[str, Any],
