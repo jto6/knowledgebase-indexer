@@ -56,9 +56,15 @@ Required:
   Everything (`builds_on`, links) ultimately resolves to it.
 - `title` — human-readable title (also the card's H1).
 - `source` — path **relative to the card's `.kb/` directory** to the origin: a
-  file (`../Plan.md`), a directory (`..`), a URL, or a list of these. The
-  "dig deeper" link. For a remote source, list the URL first (canonical) and the
-  local capture second (the analyzable basis) — see §1.6.
+  file, a directory (`..`), a URL, or a list of these. The "dig deeper" link.
+  Written as a **markdown link** so the source can be opened directly from the
+  card in an editor (e.g. `C-c C-o` in Emacs `markdown-mode`). Use the
+  angle-bracket form `[<label>](<relative-path>)` — it is always safe, handles
+  spaces in paths, and is CommonMark-compatible. The YAML string must be quoted
+  so `[` is not misread as a YAML flow sequence. kbi resolves the path by
+  stripping the link syntax transparently. For a remote source, list the URL
+  first (plain string, canonical) and the local capture second (linked) — see
+  §1.6.
 - `domain` — the subject domain; routes the card to a slice and selects the
   area profile.
 - `tags` — bottom-up content tags (kebab-case). Reused across cards to form the
@@ -108,7 +114,7 @@ Optional:
 id: ac806768-6b8d-4c4c-bd22-f8a5a831f7ff
 slug: fall-2025-l07-when-god-interrupts
 title: When God Interrupts Your Life
-source: ../Plan.md
+source: "[Plan.md](<../Plan.md>)"
 domain: spiritual
 tags: [faith, obedience, interruption-as-invitation]
 defines: [interruption-as-invitation]
@@ -157,8 +163,8 @@ visuals. See `DESIGN_PRINCIPLES_AND_DECISIONS.md` (D15 / Addendum G).
 ```yaml
 # a captured talk
 source:
-  - https://www.youtube.com/watch?v=XXXXXXXX     # canonical — watch it
-  - ../2026-06-08-grace-that-interrupts.md       # local transcript — analyzable basis
+  - https://www.youtube.com/watch?v=XXXXXXXX                          # canonical — watch it
+  - "[2026-06-08-grace-that-interrupts.md](<../2026-06-08-grace-that-interrupts.md>)"
 meta:
   capture: transcript
   speaker: "..."

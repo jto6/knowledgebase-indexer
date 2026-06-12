@@ -18,6 +18,7 @@ import glob
 import hashlib
 import os
 import fnmatch
+import re
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -324,11 +325,29 @@ class KnowledgebaseIndexer:
         return KnowledgebaseIndexer._resolve_path_list(card_record, 'refines')
 
     @staticmethod
+    def _parse_md_link_path(s: str) -> str:
+        """Extract the path from a markdown link '[text](<path>)' or '[text](path)'.
+
+        Returns the path portion, or `s` unchanged if it is not a markdown link.
+        Angle-bracket form '[text](<path with spaces>)' is used when the path
+        contains spaces (CommonMark spec); both forms are accepted here.
+        """
+        m = re.match(r'^\[([^\]]*)\]\(<([^>]*)>\)$', s)
+        if m:
+            return m.group(2)
+        m = re.match(r'^\[([^\]]*)\]\(([^)]*)\)$', s)
+        if m:
+            return m.group(2)
+        return s
+
+    @staticmethod
     def _resolve_card_source(card_record: Dict[str, Any]) -> Optional[str]:
         """Resolve a card's `source` frontmatter to an absolute filesystem path.
 
         Returns None for pure-URL sources (no local path). A list source (URL +
         local capture) uses the first non-URL entry as the local path.
+        Accepts paths written as markdown links ('[label](path)' or
+        '[label](<path with spaces>)') and strips the link syntax.
         """
         file_path = card_record.get('file_path', '')
         source = card_record.get('source')
@@ -343,7 +362,7 @@ class KnowledgebaseIndexer:
             if local is None:
                 return None
             source = local
-        source = str(source).strip()
+        source = KnowledgebaseIndexer._parse_md_link_path(str(source).strip())
         if source.startswith(('http://', 'https://')):
             return None
         card_dir = Path(file_path).parent
