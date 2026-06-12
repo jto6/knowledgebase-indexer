@@ -500,15 +500,52 @@ class KnowledgebaseIndexer:
             if rc != 0:
                 print(f"Warning: /kb-card returned {rc} for {d}", file=sys.stderr)
 
-    def process_keyword_searches(self, files: List[str], handlers: Dict[str, Any]) -> List[Any]:
-        """Process keyword-based searches and return hierarchical keyword entries with results."""
-        keyword_files = self.config.get('keywords', {}).get('files', [])
-        
+    def _resolve_keyword_files(self, domain: Optional[str]) -> List[str]:
+        """Return the keyword file paths that apply to `domain`.
+
+        Each entry in `keywords.files` is either a plain string (global — applies
+        to all domains) or a dict ``{path: ..., domain: ...}`` (domain-scoped).
+        The `domain` value may be a single string or a list of strings; the file
+        is included when `domain` matches any entry in that list.
+        For the unpartitioned case (domain is None) all files are included.
+        For a named domain, global files and matching domain-scoped files are included.
+        For NONE_DOMAIN (files with no domain in a partitioned index) only
+        global files are included.
+        """
+        from index_model import NONE_DOMAIN
+        raw = self.config.get('keywords', {}).get('files', [])
+        result = []
+        for entry in raw:
+            if isinstance(entry, str):
+                result.append(entry)          # global
+            elif isinstance(entry, dict):
+                path = entry.get('path', '')
+                file_domain = entry.get('domain')
+                if file_domain is None:
+                    result.append(path)        # global dict form
+                elif domain is None:
+                    result.append(path)        # unpartitioned: include all
+                elif domain != NONE_DOMAIN:
+                    domains = [file_domain] if isinstance(file_domain, str) else list(file_domain)
+                    if domain in domains:
+                        result.append(path)    # domain-scoped match
+        return result
+
+    def process_keyword_searches(self, files: List[str], handlers: Dict[str, Any],
+                                 domain: Optional[str] = None) -> List[Any]:
+        """Process keyword-based searches and return hierarchical keyword entries with results.
+
+        `domain` is the current partition's domain name (None = unpartitioned,
+        NONE_DOMAIN = files with no domain). Only keyword files that apply to
+        this domain are loaded (see `_resolve_keyword_files`).
+        """
+        keyword_files = self._resolve_keyword_files(domain)
+
         if not keyword_files:
             if self.debug:
                 print("No keyword files configured")
             return []
-        
+
         # Load keyword entries
         try:
             keyword_entries, warnings = load_keyword_files(keyword_files, debug=self.debug)
@@ -751,7 +788,7 @@ class KnowledgebaseIndexer:
             di.file_system = self.build_file_system_index(bfiles, handlers, all_exported)
             di.card_groups = self.build_card_groups(bfiles, card_records)
             di.dir_annotations = self.build_dir_annotations(bfiles, card_records)
-            di.keyword_entries = self.process_keyword_searches(bfiles, handlers)
+            di.keyword_entries = self.process_keyword_searches(bfiles, handlers, domain=name)
             di.tags = self.extract_tags(bfiles, handlers)
             di.words = self.extract_significant_words(bfiles, handlers) if word_on else {}
             for fp in bfiles:

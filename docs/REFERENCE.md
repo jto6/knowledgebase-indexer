@@ -485,7 +485,13 @@ missing parent directories in `PATH`.
 
 - `directories.include` — list of root paths to scan (the registry of indexed
   repos). `directories.exclude` — glob patterns to prune.
-- `keywords.files` — optional keyword files driving the Keyword view.
+- `keywords.files` — optional keyword files driving the Keyword view. Each
+  entry is either a plain string (global — applied to all domains) or a dict
+  `{path: ..., domain: ...}` (domain-scoped). The `domain` value is a single
+  domain name or a list of names; the file is included when the current
+  partition's domain matches any entry in the list. In the unpartitioned case all
+  keyword files are used. For `NONE_DOMAIN` (domainless files in a partitioned
+  index) only global files apply.
 - `output.file` — for `freeplane`, the `.mm` output file; for `markdown`, the
   output **directory** for the index files.
 - `output.format` — `freeplane` (default) or `markdown`. Selects *only*
@@ -592,7 +598,10 @@ directories:
     - "/home/jon/dev/research/SDV-research"
   exclude: ["**/.git/**", "**/__pycache__/**"]
 keywords:
-  files: []
+  files:
+    - "/home/jon/dev/kb/keywords-global.txt"       # global: all domains
+    - path: "/home/jon/dev/kb/keywords-sdv.txt"    # domain-scoped
+      domain: "sdv"
 output:
   file: "/home/jon/dev/kb/index"
   format: "markdown"

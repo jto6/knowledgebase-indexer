@@ -134,11 +134,26 @@ markdown renderer, then run `kbi`.
 directories:
   include: ["/home/jon/dev/BSFL", "/home/jon/dev/research/SDV-research"]
   exclude: ["**/.git/**", "**/__pycache__/**"]
-keywords: { files: [] }
+keywords:
+  files:
+    - "/home/jon/dev/kb/keywords-global.txt"      # applies to every domain
+    - path: "/home/jon/dev/kb/keywords-sdv.txt"   # only searched against sdv files
+      domain: "sdv"
+    - path: "/home/jon/dev/kb/keywords-bsfl.txt"  # only searched against spiritual files
+      domain: "spiritual"
+    - path: "/home/jon/dev/kb/keywords-tech.txt"  # searched against either tech domain
+      domain: ["sdv", "embedded"]
 output: { file: "/home/jon/dev/kb/index", format: "markdown" }
 types:
   include: [card]
 ```
+
+Each `keywords.files` entry is either a plain string (global — used for all
+domains) or a `{path, domain}` dict (domain-scoped — used only when building the
+matching domain's Keyword view). The `domain` value can be a single name or a list
+of names when a file spans a few related domains. Domain-scoped files let you
+maintain focused keyword hierarchies without them appearing as noise in unrelated
+domains. Plain `files: []` still works if you have no keyword files yet.
 
 ```bash
 cd ~/dev/kbi

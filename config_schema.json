@@ -29,7 +29,23 @@
         "files": {
           "type": "array",
           "items": {
-            "type": "string"
+            "oneOf": [
+              {"type": "string"},
+              {
+                "type": "object",
+                "required": ["path"],
+                "additionalProperties": false,
+                "properties": {
+                  "path": {"type": "string"},
+                  "domain": {
+                    "oneOf": [
+                      {"type": "string"},
+                      {"type": "array", "items": {"type": "string"}, "minItems": 1}
+                    ]
+                  }
+                }
+              }
+            ]
           },
           "default": []
         }
