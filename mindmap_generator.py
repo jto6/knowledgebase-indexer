@@ -23,6 +23,7 @@ class FreeplaneMapGenerator:
         self.output_path = Path(output_path)
         self.used_ids: Set[str] = set()
         self.node_counter = 0
+        self._card_essence_map: Dict[str, str] = {}  # card_path -> essence
     
     def _generate_unique_id(self) -> str:
         """Generate unique ID ensuring no duplicates."""
@@ -152,6 +153,14 @@ class FreeplaneMapGenerator:
         from index_model import (view_enabled, VIEW_FILE_SYSTEM, VIEW_KEYWORD,
                                  VIEW_TAG, VIEW_WORD, VIEW_DEPENDENCIES, VIEW_GLOSSARY)
         r = 'freeplane'
+
+        # Build card_path -> essence lookup so all views can annotate card nodes.
+        self._card_essence_map = {}
+        for group in getattr(di, 'card_groups', {}).values():
+            for _label, card_path, card_essence in group.cards:
+                if card_essence:
+                    self._card_essence_map[card_path] = card_essence
+
         if (di.file_system or di.card_groups) and view_enabled(config, VIEW_FILE_SYSTEM, r):
             self._create_file_system_index(parent, di.file_system,
                                            getattr(di, 'card_groups', {}),
@@ -501,7 +510,8 @@ class FreeplaneMapGenerator:
                 'TEXT': file_name,
                 'LINK': link_path
             })
-            
+            self._add_details(file_node, self._card_essence_map.get(file_path, ''))
+
             # Add individual matches
             for result in results:
                 match_text = result.node.text or result.matched_content[:100]
@@ -574,12 +584,17 @@ class FreeplaneMapGenerator:
                     'TEXT': file_name,
                     'LINK': link_path
                 })
-                
+                self._add_details(file_node, self._card_essence_map.get(file_path, ''))
+
                 # Sort individual node matches alphabetically within each file (R-TAG-008)
                 sorted_matches = sorted(file_groups[file_path], key=lambda x: x[1].lower())
                 
-                # Create fragment hyperlinks to individual nodes (R-TAG-011)
+                # Create fragment hyperlinks to individual nodes (R-TAG-011).
+                # Skip matches with no node_id — those are file-level tags (e.g. markdown
+                # frontmatter) where the file_node above is already the correct link.
                 for node_id, node_text in sorted_matches:
+                    if not node_id:
+                        continue
                     match_node = ET.SubElement(file_node, 'node', {
                         'ID': self._generate_unique_id(),
                         'CREATED': get_current_timestamp(),
@@ -690,6 +705,7 @@ class FreeplaneMapGenerator:
                     'TEXT': file_name,
                     'LINK': str(rel_path)
                 })
+                self._add_details(file_node, self._card_essence_map.get(file_path, ''))
         else:
             # Production format: dictionary of file_path -> match_instances
             for file_path in sorted(file_matches.keys(), key=lambda x: Path(x).name.lower()):
@@ -711,7 +727,8 @@ class FreeplaneMapGenerator:
                     'TEXT': file_name,
                     'LINK': str(rel_path)
                 })
-                
+                self._add_details(file_node, self._card_essence_map.get(file_path, ''))
+
                 # Create match instance nodes as children of file node (R-WORD-013)
                 for match_instance in match_instances:
                     node_text = match_instance.get('node_text', 'Content')
