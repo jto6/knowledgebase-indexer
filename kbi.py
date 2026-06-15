@@ -405,10 +405,18 @@ class KnowledgebaseIndexer:
             summary = [(fp, r) for fp, r in card_recs if is_file_summary(r)]
             topic = [(fp, r) for fp, r in card_recs if not is_file_summary(r)]
 
-            if summary:
+            if summary and topic:
+                # file_summary exists alongside topic cards: hide the file_summary,
+                # use its essence to annotate the source node
                 fp, rec = summary[0]
                 group.annotation = rec.get('essence', '')
                 group.hidden_card = fp
+            elif summary and not topic:
+                # file_summary is the only card (no topic cards): show it as a leaf
+                # (graceful fallback — spec says file_summary meaningful only with N≥2 topics)
+                _, rec = summary[0]
+                group.annotation = rec.get('essence', '')
+                group.hidden_card = None
             elif len(topic) == 1:
                 _, rec = topic[0]
                 group.annotation = rec.get('essence', '')
