@@ -548,7 +548,11 @@ class FreeplaneMapGenerator:
             self._create_hierarchical_node(xml_node, child, base_file_path)
     
     def _group_children_by_letter(self, parent: ET.Element, threshold: int = 20) -> None:
-        """If parent has more than threshold children, re-parent them into per-letter buckets."""
+        """If parent has more than threshold children, re-parent them into per-letter buckets.
+
+        Any letter bucket that is itself oversized is further split by
+        _group_children_by_range into equal-size chunks with prefix-range labels.
+        """
         children = list(parent)
         if len(children) <= threshold:
             return
@@ -573,6 +577,39 @@ class FreeplaneMapGenerator:
             })
             for child in buckets[letter]:
                 bucket_node.append(child)
+            self._group_children_by_range(bucket_node, threshold)
+
+    def _group_children_by_range(self, parent: ET.Element, threshold: int = 20) -> None:
+        """If parent has more than threshold children, split into equal-size chunks.
+
+        Each chunk is labelled with a prefix range derived from the TEXT of its
+        first and last members, e.g. "SAF–SMO".  Children are assumed to already
+        be in sorted order.
+        """
+        import math
+        children = list(parent)
+        if len(children) <= threshold:
+            return
+
+        num_chunks = math.ceil(len(children) / threshold)
+        chunk_size = math.ceil(len(children) / num_chunks)
+
+        for child in children:
+            parent.remove(child)
+
+        for i in range(0, len(children), chunk_size):
+            chunk = children[i:i + chunk_size]
+            first = chunk[0].get('TEXT', '')[:3].upper()
+            last  = chunk[-1].get('TEXT', '')[:3].upper()
+            label = f"{first}–{last}" if first != last else first
+            range_node = ET.SubElement(parent, 'node', {
+                'ID': self._generate_unique_id(),
+                'CREATED': get_current_timestamp(),
+                'MODIFIED': get_current_timestamp(),
+                'TEXT': label
+            })
+            for child in chunk:
+                range_node.append(child)
 
     def _create_keyword_index(self, parent: ET.Element,
                             keyword_entries: List[Any]) -> ET.Element:
