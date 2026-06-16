@@ -130,7 +130,28 @@ class FreeplaneMapGenerator:
         })
 
         if model.partitioned:
-            for name, di in model.ordered_domains():
+            all_domains = list(model.ordered_domains())
+            if len(all_domains) > 1:
+                # Global aggregated views at top level for cross-domain search
+                merged_di = self._merge_domain_indexes(model)
+                self._render_domain_views(main_root, merged_di, config)
+                # Per-domain drill-down under a "Domains" branch
+                domains_node = ET.SubElement(main_root, 'node', {
+                    'ID': self._generate_unique_id(),
+                    'CREATED': get_current_timestamp(),
+                    'MODIFIED': get_current_timestamp(),
+                    'TEXT': 'Domains',
+                })
+                for name, di in all_domains:
+                    dom_node = ET.SubElement(domains_node, 'node', {
+                        'ID': self._generate_unique_id(),
+                        'CREATED': get_current_timestamp(),
+                        'MODIFIED': get_current_timestamp(),
+                        'TEXT': f'Domain: {name}'
+                    })
+                    self._render_domain_views(dom_node, di, config)
+            else:
+                name, di = all_domains[0]
                 dom_node = ET.SubElement(main_root, 'node', {
                     'ID': self._generate_unique_id(),
                     'CREATED': get_current_timestamp(),
@@ -313,7 +334,27 @@ class FreeplaneMapGenerator:
             remaining = path.parts[len(home_parts):]
             return str(Path(*remaining)) if remaining else file_path
         return file_path
-    
+
+    def _merge_domain_indexes(self, model):
+        """Return a synthetic DomainIndex merging all domains for global views."""
+        from index_model import DomainIndex
+        merged = DomainIndex(name=None)
+        for di in model.domains.values():
+            merged.file_system.update(di.file_system)
+            merged.card_groups.update(di.card_groups)
+            merged.dir_annotations.update(di.dir_annotations)
+            merged.keyword_entries.extend(di.keyword_entries)
+            for tag, matches in di.tags.items():
+                merged.tags.setdefault(tag, []).extend(matches)
+            for word, file_matches in di.words.items():
+                if isinstance(file_matches, dict):
+                    merged.words.setdefault(word, {}).update(file_matches)
+                else:
+                    merged.words.setdefault(word, []).extend(file_matches)
+            merged.dependencies.extend(di.dependencies)
+            merged.glossary.update(di.glossary)
+        return merged
+
     def _create_directory_nodes(self, parent: ET.Element, structure: Dict[str, Any],
                               file_index: Dict[str, List[HierarchicalNode]],
                               card_groups=None, dir_annotations=None, current_abs_dir=None):
