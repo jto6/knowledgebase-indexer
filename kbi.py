@@ -54,6 +54,16 @@ BUILTIN_TYPES = [
 ]
 
 
+# Built-in source-exclude patterns applied by --update's staleness check even
+# when no kb.yml is present.  Users can extend (not replace) via kb.yml
+# `source_exclude`.  Hidden files (.*) are always excluded separately.
+_DEFAULT_SOURCE_EXCLUDE = [
+    '*.conflict*',   # Google Drive / OneDrive sync-conflict artefacts
+    '*.mm.md',       # mm2md converted outputs (derived, not source)
+    'CLAUDE.md',     # Claude Code project instructions — never a KB source
+]
+
+
 class KnowledgebaseIndexer:
     """Main application class for generating knowledge indexes (render-independent model, pluggable renderers)."""
     
@@ -456,33 +466,168 @@ class KnowledgebaseIndexer:
         digest = hashlib.sha256("".join(entries).encode()).hexdigest()
         return f"sha256:{digest}"
 
-    def run_update(self, config: Dict[str, Any]) -> None:
-        """Refresh stale card sets before indexing.
+    @staticmethod
+    def _load_source_exclude(source_dir: Path) -> List[str]:
+        """Return the source-exclude glob patterns for source_dir.
 
-        For every directory under the include paths that has a
-        `.kb/segmentation.yml` with a `dir_fingerprint` field, recompute
-        the fingerprint and invoke `claude -p /kb-card <dir>` when stale.
-        Directories without a `segmentation.yml` are skipped entirely.
+        Starts with _DEFAULT_SOURCE_EXCLUDE, then appends any patterns from
+        the nearest ancestor `.kb/kb.yml` `source_exclude` list.  Nearest-
+        ancestor-wins for the yaml key itself; the built-in defaults always
+        apply so existing kb.yml files without `source_exclude` still get the
+        standard artefact filters.
+        """
+        patterns: List[str] = list(_DEFAULT_SOURCE_EXCLUDE)
+        current = source_dir
+        while True:
+            kb_yml = current / '.kb' / 'kb.yml'
+            if kb_yml.exists():
+                try:
+                    import yaml as _yaml
+                    kb = _yaml.safe_load(kb_yml.read_text(encoding='utf-8')) or {}
+                    user = kb.get('source_exclude') or []
+                    patterns.extend(user)
+                except Exception:
+                    pass
+                break
+            parent = current.parent
+            if parent == current:
+                break
+            current = parent
+        return patterns
+
+    @staticmethod
+    def _dir_content_changed(seg: Dict[str, Any], kb_dir: Path) -> bool:
+        """Return True if any source file referenced in segmentation.yml has changed content.
+
+        Compares each card's stored `source_hash` against a freshly computed
+        SHA-256 of that file's bytes.  Files that have been added or removed
+        also count as changed.  Pure-URL sources and dir_summary cards (whose
+        source is the directory itself, tracked via `dir_hash` not `source_hash`)
+        are skipped.
+
+        This is a content-level check that avoids false positives from mtime
+        changes (git checkout, sync, touch) that trick the mtime-based
+        dir_fingerprint into reporting stale when nothing actually changed.
+        """
+        source_dir = kb_dir.parent
+        cards = seg.get('cards', []) or []
+        if not cards:
+            # No cards recorded yet — treat as changed so /kb-card can initialise
+            return True
+
+        seen_sources: set = set()
+        for card in cards:
+            # dir_summary cards use dir_hash, not source_hash; their source is
+            # the directory itself ('..' relative to .kb/).  Skip them here.
+            if card.get('kind') == 'dir_summary':
+                continue
+            # Also skip any card without a source_hash (no content to compare)
+            stored_hash = card.get('source_hash', '')
+            if not stored_hash:
+                continue
+
+            raw_source = card.get('source', '')
+            if not raw_source:
+                continue
+            # Resolve a list source (URL + local path) to the local path entry
+            if isinstance(raw_source, list):
+                local = next(
+                    (s for s in raw_source if not str(s).startswith('http')),
+                    None,
+                )
+                if local is None:
+                    continue
+                raw_source = str(local)
+            path_str = KnowledgebaseIndexer._parse_md_link_path(str(raw_source).strip())
+            if path_str.startswith('http'):
+                continue
+            source_path = (kb_dir / path_str).resolve()
+            if source_path in seen_sources:
+                continue
+            seen_sources.add(source_path)
+
+            if not source_path.exists():
+                return True  # source file deleted
+            if source_path.is_dir():
+                continue  # safety guard — should not happen for non-dir_summary cards
+            try:
+                full_hash = 'sha256:' + hashlib.sha256(source_path.read_bytes()).hexdigest()
+            except OSError:
+                return True
+            # stored_hash may be a truncated prefix (e.g. 'sha256:5ca9f4a552e44df8').
+            # Compare only as many characters as were stored.
+            if not full_hash.startswith(stored_hash):
+                return True
+
+        # Check for new source files that have no card yet.  Two filters keep
+        # noise out:
+        #   1. source_exclude patterns (kb.yml + built-in defaults) — removes
+        #      explicitly unwanted files regardless of extension.
+        #   2. Extension heuristic — only consider files whose suffix matches
+        #      an extension already tracked; this automatically excludes
+        #      .pdf/.html/.log/.csv etc. from directories that only track .mm
+        #      or .md sources.  Users add same-extension exclusions (e.g.
+        #      CLAUDE.md) via kb.yml source_exclude.
+        tracked_exts = {p.suffix.lower() for p in seen_sources if p.suffix}
+        if tracked_exts:
+            exclude_patterns = KnowledgebaseIndexer._load_source_exclude(source_dir)
+            try:
+                for name in os.listdir(str(source_dir)):
+                    if name.startswith('.'):
+                        continue
+                    if any(fnmatch.fnmatch(name, pat) for pat in exclude_patterns):
+                        continue
+                    candidate = (source_dir / name).resolve()
+                    if not candidate.is_file():
+                        continue
+                    if candidate.suffix.lower() not in tracked_exts:
+                        continue
+                    if candidate not in seen_sources:
+                        return True
+            except OSError:
+                pass
+
+        return False
+
+    def _scan_managed_directories(self, config: Dict[str, Any]) -> tuple:
+        """Return (stale_dirs, current_count) for all managed directories.
+
+        A managed directory is any directory with a `.kb/segmentation.yml`
+        that contains a `dir_fingerprint` field.  Returns a 2-tuple:
+          stale_dirs   — list of absolute path strings whose fingerprint
+                         no longer matches the stored value
+          current_count — count of directories whose fingerprint matches
+
+        Uses a two-level check:
+          1. mtime-based dir_fingerprint (fast) — if unchanged, skip immediately.
+          2. Content-based source_hash comparison — if dir_fingerprint changed but
+             all source file contents are identical to their stored hashes, the
+             directory is mtime-stale but content-current; skip Claude.
         """
         try:
             import yaml as _yaml
         except ImportError:
-            print("Warning: PyYAML not available; --update skipped", file=sys.stderr)
-            return
+            print("Warning: PyYAML not available", file=sys.stderr)
+            return [], 0
 
         include_dirs = (config.get('directories', {}) or {}).get('include', ['.'])
         if not include_dirs:
             include_dirs = ['.']
 
-        visited = set()
-        stale = []
+        visited: set = set()
+        stale: list = []
+        current_count = 0
 
         for inc in include_dirs:
             inc_path = Path(inc).resolve()
             for root, dirs, _files in os.walk(str(inc_path)):
                 dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
                 seg_yml = Path(root) / '.kb' / 'segmentation.yml'
-                if not seg_yml.exists():
+                try:
+                    exists = seg_yml.exists()
+                except PermissionError:
+                    continue
+                if not exists:
                     continue
                 abs_dir = str(Path(root).resolve())
                 if abs_dir in visited:
@@ -492,21 +637,48 @@ class KnowledgebaseIndexer:
                     seg = _yaml.safe_load(seg_yml.read_text(encoding='utf-8')) or {}
                 except Exception:
                     seg = {}
-                stored = seg.get('dir_fingerprint', '')
-                current = self._compute_dir_fingerprint(abs_dir)
-                if current != stored:
+                stored_fp = seg.get('dir_fingerprint', '')
+                current_fp = self._compute_dir_fingerprint(abs_dir)
+                if current_fp == stored_fp:
+                    current_count += 1
+                    continue
+                # dir_fingerprint changed — do a content-level check before
+                # paying the Claude invocation cost.
+                if not self._dir_content_changed(seg, seg_yml.parent):
+                    current_count += 1
+                else:
                     stale.append(abs_dir)
 
-        if not stale:
-            if self.debug:
-                print("--update: all directories are current")
-            return
+        return stale, current_count
+
+    def run_update(self, config: Dict[str, Any]) -> None:
+        """Refresh stale card sets before indexing.
+
+        For every directory under the include paths that has a
+        `.kb/segmentation.yml` with a `dir_fingerprint` field, recompute
+        the fingerprint and invoke `claude -p /kb-card <dir>` when stale.
+        Directories without a `segmentation.yml` are skipped entirely.
+        """
+        print("--update: scanning for managed directories …", flush=True)
+        stale, current_count = self._scan_managed_directories(config)
 
         for d in stale:
-            print(f"--update: refreshing {d}")
-            rc = subprocess.run(['claude', '-p', '/kb-card', d]).returncode
+            print(f"  stale: {d}", flush=True)
+
+        total = len(stale) + current_count
+        print(f"--update: {total} managed director{'ies' if total != 1 else 'y'} found, "
+              f"{len(stale)} stale, {current_count} current", flush=True)
+
+        if not stale:
+            return
+
+        for i, d in enumerate(stale, 1):
+            print(f"--update: [{i}/{len(stale)}] refreshing {d}", flush=True)
+            rc = subprocess.run(['claude', '-p', '/kb-card'], cwd=d).returncode
             if rc != 0:
                 print(f"Warning: /kb-card returned {rc} for {d}", file=sys.stderr)
+
+        print(f"--update: done ({len(stale)} director{'ies' if len(stale) != 1 else 'y'} refreshed)", flush=True)
 
     def _resolve_keyword_files(self, domain: Optional[str]) -> List[str]:
         """Return the keyword file paths that apply to `domain`.
