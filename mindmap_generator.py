@@ -298,6 +298,21 @@ class FreeplaneMapGenerator:
             return home_parts
 
         return ()
+
+    def _display_path(self, file_path: str) -> str:
+        """Return a display path with the home directory stripped.
+
+        Mirrors the prefix-stripping logic in _find_common_path_prefix so that
+        non-filesystem index nodes show project-relative context rather than
+        just a bare filename (e.g. /home/jon/dev/proj/sub/README.md →
+        dev/proj/sub/README.md).
+        """
+        path = Path(file_path)
+        home_parts = Path.home().parts
+        if path.parts[:len(home_parts)] == home_parts:
+            remaining = path.parts[len(home_parts):]
+            return str(Path(*remaining)) if remaining else file_path
+        return file_path
     
     def _create_directory_nodes(self, parent: ET.Element, structure: Dict[str, Any],
                               file_index: Dict[str, List[HierarchicalNode]],
@@ -492,9 +507,7 @@ class FreeplaneMapGenerator:
         for file_path, results in search_results.items():
             if not results:
                 continue
-            
-            file_name = Path(file_path).name
-            
+
             # Handle paths that may be outside current working directory
             try:
                 rel_path = Path(file_path).relative_to(Path.cwd())
@@ -502,12 +515,12 @@ class FreeplaneMapGenerator:
             except ValueError:
                 # File is outside current working directory, use absolute path
                 link_path = file_path
-            
+
             file_node = ET.SubElement(parent, 'node', {
                 'ID': self._generate_unique_id(),
                 'CREATED': get_current_timestamp(),
                 'MODIFIED': get_current_timestamp(),
-                'TEXT': file_name,
+                'TEXT': self._display_path(file_path),
                 'LINK': link_path
             })
             self._add_details(file_node, self._card_essence_map.get(file_path, ''))
@@ -566,8 +579,6 @@ class FreeplaneMapGenerator:
             
             # Sort files alphabetically within each tag group (R-TAG-007)
             for file_path in sorted(file_groups.keys(), key=lambda x: Path(x).name.lower()):
-                file_name = Path(file_path).name
-                
                 # Handle paths that may be outside current working directory
                 try:
                     rel_path = Path(file_path).relative_to(Path.cwd())
@@ -575,13 +586,13 @@ class FreeplaneMapGenerator:
                 except ValueError:
                     # File is outside current working directory, use absolute path
                     link_path = file_path
-                
+
                 # Create hyperlinks to files at file level (R-TAG-010)
                 file_node = ET.SubElement(tag_node, 'node', {
                     'ID': self._generate_unique_id(),
                     'CREATED': get_current_timestamp(),
                     'MODIFIED': get_current_timestamp(),
-                    'TEXT': file_name,
+                    'TEXT': self._display_path(file_path),
                     'LINK': link_path
                 })
                 self._add_details(file_node, self._card_essence_map.get(file_path, ''))
@@ -689,42 +700,39 @@ class FreeplaneMapGenerator:
         if isinstance(file_matches, list):
             # Test format: simple list of file paths
             for file_path in sorted(file_matches, key=lambda x: Path(x).name.lower()):
-                file_name = Path(file_path).name
-                
                 # Generate relative path for portability
                 try:
                     rel_path = Path(file_path).relative_to(Path.cwd())
                 except ValueError:
                     rel_path = Path(file_path)
-                
+
                 # Create simple file node without match instances
                 file_node = ET.SubElement(word_node, 'node', {
                     'ID': self._generate_unique_id(),
                     'CREATED': get_current_timestamp(),
                     'MODIFIED': get_current_timestamp(),
-                    'TEXT': file_name,
+                    'TEXT': self._display_path(file_path),
                     'LINK': str(rel_path)
                 })
                 self._add_details(file_node, self._card_essence_map.get(file_path, ''))
         else:
             # Production format: dictionary of file_path -> match_instances
             for file_path in sorted(file_matches.keys(), key=lambda x: Path(x).name.lower()):
-                file_name = Path(file_path).name
                 match_instances = file_matches[file_path]
-                
+
                 # Generate relative path for portability
                 try:
                     rel_path = Path(file_path).relative_to(Path.cwd())
                 except ValueError:
                     # Fallback if path is not relative to current directory
                     rel_path = Path(file_path)
-                
+
                 # Create file node (R-WORD-012)
                 file_node = ET.SubElement(word_node, 'node', {
                     'ID': self._generate_unique_id(),
                     'CREATED': get_current_timestamp(),
                     'MODIFIED': get_current_timestamp(),
-                    'TEXT': file_name,
+                    'TEXT': self._display_path(file_path),
                     'LINK': str(rel_path)
                 })
                 self._add_details(file_node, self._card_essence_map.get(file_path, ''))

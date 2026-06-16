@@ -188,9 +188,9 @@ class TestWordIndexGeneration:
         file_links = [node.get('LINK') for node in file_nodes]
         file_texts = [node.get('TEXT') for node in file_nodes]
         
-        # File nodes should have proper names
-        assert 'script.py' in file_texts
-        assert 'module.py' in file_texts
+        # File nodes should have proper names (TEXT may be full path or display path)
+        assert any('script.py' in t for t in file_texts)
+        assert any('module.py' in t for t in file_texts)
         
         # File nodes should have proper links (relative paths)
         assert any('script.py' in link for link in file_links if link)
@@ -437,5 +437,5 @@ class TestWordIndexGeneration:
         assert len(file_nodes) == 2
         
         file_names = [node.get('TEXT') for node in file_nodes]
-        assert 'file1.py' in file_names
-        assert 'file2.py' in file_names
+        assert any('file1.py' in n for n in file_names)
+        assert any('file2.py' in n for n in file_names)
