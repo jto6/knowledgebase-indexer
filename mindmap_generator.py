@@ -321,19 +321,20 @@ class FreeplaneMapGenerator:
         return ()
 
     def _display_path(self, file_path: str) -> str:
-        """Return a display path with the home directory stripped.
+        """Return a display path with the home directory stripped and .kb/ collapsed.
 
-        Mirrors the prefix-stripping logic in _find_common_path_prefix so that
-        non-filesystem index nodes show project-relative context rather than
-        just a bare filename (e.g. /home/jon/dev/proj/sub/README.md →
-        dev/proj/sub/README.md).
+        Strips the home directory prefix, then replaces the hidden /.kb/ directory
+        segment with a ':' separator so card paths like dev/proj/.kb/card.kb.md
+        render as dev/proj:card.kb.md.
         """
         path = Path(file_path)
         home_parts = Path.home().parts
         if path.parts[:len(home_parts)] == home_parts:
             remaining = path.parts[len(home_parts):]
-            return str(Path(*remaining)) if remaining else file_path
-        return file_path
+            result = str(Path(*remaining)) if remaining else file_path
+        else:
+            result = file_path
+        return result.replace('/.kb/', '::')
 
     def _merge_domain_indexes(self, model):
         """Return a synthetic DomainIndex merging all domains for global views."""
