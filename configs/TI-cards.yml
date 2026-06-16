@@ -1,0 +1,22 @@
+# kbi configuration file for my TI Ubuntu repositories - knowledge cards only
+directories:
+  include:
+    - "/home/jon/TIGoogleDrive"
+    - "/home/jon/dev"
+  exclude:
+    - "**/node_modules/**"
+    - "**/.git/**"
+    - "**/build/**"
+    - "**/photos/**"
+    - "**/__pycache__/**"
+    - "**/.venv*/**"
+
+keywords:
+  files:
+    - "/home/jon/TIGoogleDrive/MyMaps/.kw.mmtxt"
+
+output:
+  format: "freeplane"
+
+types:
+  include: [card]
