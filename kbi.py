@@ -579,22 +579,47 @@ class KnowledgebaseIndexer:
                 traceback.print_exc()
             return []
     
+    @staticmethod
+    def _split_keyword_sequence(text: str) -> List[str]:
+        """Split on ':' that are outside character classes [...].
+
+        A bare ':' is the sequence separator; ':' inside [...] is part of the
+        regex pattern and must not be split on.
+        """
+        parts = []
+        current: List[str] = []
+        depth = 0
+        for ch in text:
+            if ch == '[':
+                depth += 1
+                current.append(ch)
+            elif ch == ']' and depth:
+                depth -= 1
+                current.append(ch)
+            elif ch == ':' and not depth:
+                parts.append(''.join(current).strip())
+                current = []
+            else:
+                current.append(ch)
+        parts.append(''.join(current).strip())
+        return parts
+
     def _execute_keyword_searches(self, entries: List, files: List[str], handlers: Dict[str, Any]):
         """Recursively execute searches for keyword entries and store results."""
         for entry in entries:
             if entry.is_leaf:
                 # This is a search pattern - execute the search
-                if ':' in entry.text:
-                    # Multi-term sequence
-                    sequence = [term.strip() for term in entry.text.split(':')]
-                else:
-                    # Single term
-                    sequence = [entry.text]
-                
+                sequence = self._split_keyword_sequence(entry.text)
+
                 if self.debug:
                     print(f"Searching sequence: {' → '.join(sequence)}")
-                
-                search_results = self.search_engine.search_sequence(files, sequence, handlers)
+
+                try:
+                    search_results = self.search_engine.search_sequence(files, sequence, handlers)
+                except Exception as e:
+                    if self.debug:
+                        print(f"  Skipping entry {entry.text!r}: {e}")
+                    search_results = {}
                 # Store results directly on the entry object
                 entry.search_results = search_results
             else:
