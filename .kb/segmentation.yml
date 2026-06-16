@@ -1,0 +1,118 @@
+# .kb/segmentation.yml — reviewed segmentation manifest for this directory.
+version: 1
+updated: 2026-06-11
+density: normal
+dir_fingerprint: sha256:5e3dbeceba9c4ac2da8c6930b3764888e274e65adab93cc90b8e453c3324147f
+cards:
+  - slug: readme
+    id: 7b7289d6-e382-4aaa-a8ea-f9e1598a6a2c
+    file: readme.kb.md
+    source: ../README.md
+    title: Knowledgebase Indexer — README
+    source_hash: sha256:785a3d3568db4c74344fc6c247ad8d2874bf13c1e2866d50644d7f4d52711ad8
+
+  - slug: kbi-app
+    id: 9f5be35a-24ad-44b6-bdd2-50c043cae9fd
+    file: kbi.app.kb.md
+    source: ../kbi.py
+    title: KBI Main Application
+    source_hash: sha256:d3e112881b1236bb53e30695f8b28fee27f7fb831413fc2cd5a188fc734e4de8
+
+  - slug: config
+    id: 22d86247-01ec-40ac-aabd-5bb014c50553
+    file: config.kb.md
+    source: ../config.py
+    title: Configuration Management
+    source_hash: sha256:6664fa73f62e4f5f589d608ae8c577efcd580b3aa816add477bf1989deded462
+
+  - slug: core-handlers
+    id: 01baa6c5-6346-410b-954a-a0c8585c3ada
+    file: core-handlers.kb.md
+    source: ../core_handlers.py
+    title: Core Handlers and Base Classes
+    source_hash: sha256:dfb8f34b15ab1566e53acda985bc6d503bb6309cee50cee338f40c7188473e2d
+
+  - slug: index-model
+    id: 6f318f4a-4362-44b3-b3e1-75df571ea30f
+    file: index-model.kb.md
+    source: ../index_model.py
+    title: Render-Independent Index Model
+    source_hash: sha256:4dc0cc9b2dea8e22a3ed4e4f2a7f522fdb07c66e6a94740486ccfd46fa7efce9
+
+  - slug: search
+    id: 6ff64ea4-cd56-450f-bc02-ebb12e04d116
+    file: search.kb.md
+    source: ../search.py
+    title: Hierarchical Search Engine
+    source_hash: sha256:ed0113426d5f9192b04bcd2413b495284f3ce9f8281e67fc3a3573d49182b1e7
+
+  - slug: keywords
+    id: a34a4e10-81a9-48a0-b081-ff5bd56c10f8
+    file: keywords.kb.md
+    source: ../keywords.py
+    title: Keyword File Processing
+    source_hash: sha256:08a4b0dd42ae8e4a2caca0acdc6c37d5381fda680d3c7d7789d6a3161f10dc94
+
+  - slug: mindmap-generator
+    id: ec83a881-b248-4a38-8c35-48de15f8ee69
+    file: mindmap-generator.kb.md
+    source: ../mindmap_generator.py
+    title: Freeplane Mindmap Generator
+    source_hash: sha256:8edc0466c15695d621fd8d04eb7e651e8fb62a39a9e950b3fb8ac597638b2c1f
+
+  - slug: markdown-renderer
+    id: 793eea75-f12b-4230-9351-5cd91f9f660e
+    file: markdown-renderer.kb.md
+    source: ../markdown_renderer.py
+    title: Markdown Index Renderer
+    source_hash: sha256:f6f21f2e35f02cb174518d39ef33c63b10440a8a50f1e3664975fb7204d6e2c0
+
+  - slug: word-filter
+    id: c8e016ad-cf59-45b9-acff-88cecf116d77
+    file: word-filter.kb.md
+    source: ../word_filter.py
+    title: Significant Word Filter
+    source_hash: sha256:72bdf588ffb1eb47763845fe1dee425df683728dea102cf15ff399f729b6626e
+
+  - slug: logging-config
+    id: c40b82ef-4ae5-4ac3-a25d-be63b9cf90d3
+    file: logging-config.kb.md
+    source: ../logging_config.py
+    title: Logging Configuration
+    source_hash: sha256:503782f7b39efd0ed80a14edebe55f67bd969f0e806c2e189af84ec46828e5b9
+
+  - slug: kb-rename-domain
+    id: 489b8533-e603-487a-9759-def8ad1abcce
+    file: kb-rename-domain.kb.md
+    source: ../kb-rename-domain.py
+    title: KB Rename Domain Utility
+    source_hash: sha256:002bfe38c8f50417813e4cb2c71705be8098de74b5dcc7510889f5df20789ebf
+
+  - slug: kbi-init
+    id: f6c9d6bd-692f-4bc6-ac71-4eabc976b5ae
+    file: init.kb.md
+    source: ../__init__.py
+    title: KBI Package Init (Lazy Import)
+    source_hash: sha256:acc76233efdd9fb6de16e5a8c0cacf253ef12e656d86552aebb8448734ad9b21
+
+  - slug: run-tests
+    id: be7e5452-d861-475d-8da8-c82bc4bbd9c4
+    file: run-tests.kb.md
+    source: ../run_tests.py
+    title: Test Runner Script
+    source_hash: sha256:923fb6db0581a117515425db584f166d7a12bfda639591cab870adb8f06c49ee
+
+  - slug: config-schema
+    id: e8f31501-0bc4-4950-ae8a-b3ee7aaa83c4
+    file: config-schema.kb.md
+    source: ../config_schema.json
+    title: KBI Configuration Schema
+    source_hash: sha256:0fd74a546bce263661a7e29d9e274f1a2fdb18141807af408db8747b9c30080f
+
+  - slug: kbi-dir
+    id: 4df0ddb1-7af7-4de5-aca5-91ba0ab06979
+    file: kbi.kb.md
+    kind: dir_summary
+    source: ..
+    title: KBI Root Directory
+    dir_hash: sha256:16bc794397543757b3be046ae5d8fb6454483381a8426cf498071f70db2049f9
