@@ -336,15 +336,36 @@ class FreeplaneMapGenerator:
             result = file_path
         return result.replace('/.kb/', '::')
 
+    def _merge_keyword_entries(self, all_entries_lists):
+        """Merge keyword entry lists from multiple domains, deduplicating by text."""
+        seen = {}
+        for entries in all_entries_lists:
+            for entry in entries:
+                if entry.text not in seen:
+                    seen[entry.text] = entry
+                else:
+                    existing = seen[entry.text]
+                    if hasattr(entry, 'search_results') and entry.search_results:
+                        if not hasattr(existing, 'search_results'):
+                            existing.search_results = {}
+                        for fp, results in entry.search_results.items():
+                            existing.search_results.setdefault(fp, []).extend(results)
+                    if entry.children:
+                        existing.children = self._merge_keyword_entries(
+                            [existing.children, entry.children]
+                        )
+        return list(seen.values())
+
     def _merge_domain_indexes(self, model):
         """Return a synthetic DomainIndex merging all domains for global views."""
         from index_model import DomainIndex
         merged = DomainIndex(name=None)
+        domain_kw_lists = []
         for di in model.domains.values():
             merged.file_system.update(di.file_system)
             merged.card_groups.update(di.card_groups)
             merged.dir_annotations.update(di.dir_annotations)
-            merged.keyword_entries.extend(di.keyword_entries)
+            domain_kw_lists.append(di.keyword_entries)
             for tag, matches in di.tags.items():
                 merged.tags.setdefault(tag, []).extend(matches)
             for word, file_matches in di.words.items():
@@ -354,6 +375,7 @@ class FreeplaneMapGenerator:
                     merged.words.setdefault(word, []).extend(file_matches)
             merged.dependencies.extend(di.dependencies)
             merged.glossary.update(di.glossary)
+        merged.keyword_entries = self._merge_keyword_entries(domain_kw_lists)
         return merged
 
     def _create_directory_nodes(self, parent: ET.Element, structure: Dict[str, Any],
