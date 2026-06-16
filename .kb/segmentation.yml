@@ -1,8 +1,8 @@
 # .kb/segmentation.yml — reviewed segmentation manifest for this directory.
 version: 1
-updated: 2026-06-11
+updated: 2026-06-16
 density: normal
-dir_fingerprint: sha256:5e3dbeceba9c4ac2da8c6930b3764888e274e65adab93cc90b8e453c3324147f
+dir_fingerprint: sha256:02e73a6a32c291328f65382a9e69b8c0072f76cbe1be839f608fc2c6e16aa345
 cards:
   - slug: readme
     id: 7b7289d6-e382-4aaa-a8ea-f9e1598a6a2c
@@ -16,7 +16,7 @@ cards:
     file: kbi.app.kb.md
     source: ../kbi.py
     title: KBI Main Application
-    source_hash: sha256:d3e112881b1236bb53e30695f8b28fee27f7fb831413fc2cd5a188fc734e4de8
+    source_hash: sha256:1188ee09caaad5d268098c7161fcff4c8de5f8e5468b66182d0d83ef41a62f2d
 
   - slug: config
     id: 22d86247-01ec-40ac-aabd-5bb014c50553
@@ -58,7 +58,7 @@ cards:
     file: mindmap-generator.kb.md
     source: ../mindmap_generator.py
     title: Freeplane Mindmap Generator
-    source_hash: sha256:8edc0466c15695d621fd8d04eb7e651e8fb62a39a9e950b3fb8ac597638b2c1f
+    source_hash: sha256:5006da7d4295799cc0a8b2b054003043990926e94a41ffd3f58cf394b7524362
 
   - slug: markdown-renderer
     id: 793eea75-f12b-4230-9351-5cd91f9f660e
@@ -107,7 +107,7 @@ cards:
     file: config-schema.kb.md
     source: ../config_schema.json
     title: KBI Configuration Schema
-    source_hash: sha256:0fd74a546bce263661a7e29d9e274f1a2fdb18141807af408db8747b9c30080f
+    source_hash: sha256:57125219cac6a1033dc5b69936c2f56d6ff6b2e255b9bef950f76557bf3d7d02
 
   - slug: kbi-dir
     id: 4df0ddb1-7af7-4de5-aca5-91ba0ab06979
@@ -115,4 +115,4 @@ cards:
     kind: dir_summary
     source: ..
     title: KBI Root Directory
-    dir_hash: sha256:16bc794397543757b3be046ae5d8fb6454483381a8426cf498071f70db2049f9
+    dir_hash: sha256:593b30a4456960217ecda4c1b7177f4221711ae6fd58600274c0cd1ec263695a

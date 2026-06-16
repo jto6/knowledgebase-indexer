@@ -2,12 +2,12 @@
 id: e8f31501-0bc4-4950-ae8a-b3ee7aaa83c4
 slug: config-schema
 title: KBI Configuration Schema
-source: ../config_schema.json
+source: "[config_schema.json](<../config_schema.json>)"
 domain: technical
 tags: [kbi, configuration, schema, validation, json-schema]
 builds_on: config
 created: 2026-06-11
-updated: 2026-06-11
+updated: 2026-06-16
 ---
 
 # KBI Configuration Schema
@@ -20,7 +20,7 @@ updated: 2026-06-11
 - **`directories`**
 	- `include` — required array of glob patterns (min 1); specifies directories to index
 	- `exclude` — optional array of glob patterns (default `[]`); prunes matched directories
-- **`keywords.files`** — optional array of paths to keyword files fed to the search engine
+- **`keywords.files`** — optional array; each item is either a plain path string (global, applies to all domains) or a `{path, domain}` object (domain-scoped); `domain` may be a single string or a list of strings (`minItems: 1`); domain-scoped files are loaded only when the current partition's domain matches
 - **`output`**
 	- `file` — output file path
 	- `format` — `freeplane` (default) | `markdown`; selects the renderer
