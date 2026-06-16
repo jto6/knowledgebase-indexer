@@ -547,7 +547,34 @@ class FreeplaneMapGenerator:
         for child in node.children:
             self._create_hierarchical_node(xml_node, child, base_file_path)
     
-    def _create_keyword_index(self, parent: ET.Element, 
+    def _group_children_by_letter(self, parent: ET.Element, threshold: int = 20) -> None:
+        """If parent has more than threshold children, re-parent them into per-letter buckets."""
+        children = list(parent)
+        if len(children) <= threshold:
+            return
+
+        buckets: Dict[str, list] = {}
+        for child in children:
+            text = child.get('TEXT', '')
+            letter = text[0].upper() if text else '#'
+            if not letter.isalpha():
+                letter = '#'
+            buckets.setdefault(letter, []).append(child)
+
+        for child in children:
+            parent.remove(child)
+
+        for letter in sorted(buckets.keys()):
+            bucket_node = ET.SubElement(parent, 'node', {
+                'ID': self._generate_unique_id(),
+                'CREATED': get_current_timestamp(),
+                'MODIFIED': get_current_timestamp(),
+                'TEXT': letter
+            })
+            for child in buckets[letter]:
+                bucket_node.append(child)
+
+    def _create_keyword_index(self, parent: ET.Element,
                             keyword_entries: List[Any]) -> ET.Element:
         """Create keyword index preserving exact hierarchical structure from keyword file."""
         kw_root = ET.SubElement(parent, 'node', {
@@ -561,7 +588,8 @@ class FreeplaneMapGenerator:
         sorted_entries = sorted(keyword_entries, key=lambda e: e.text.lower())
         for entry in sorted_entries:
             self._create_keyword_entry_node(kw_root, entry)
-        
+
+        self._group_children_by_letter(kw_root)
         return kw_root
     
     def _create_keyword_entry_node(self, parent: ET.Element, entry: Any) -> ET.Element:
@@ -725,9 +753,10 @@ class FreeplaneMapGenerator:
                             'TEXT': node_text,
                             'LINK': f"{link_path}#{node_id}"
                         })
-        
+
+        self._group_children_by_letter(tag_root)
         return tag_root
-    
+
     def _create_word_index(self, parent: ET.Element, 
                           word_results: Dict[str, Dict]) -> ET.Element:
         """Create word-based navigation index (R-WORD-001 to R-WORD-015)."""
