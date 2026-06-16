@@ -274,6 +274,21 @@ Optional:
   directory with only one distinct source never gets a separate summary card.
 - `draws_on` — list of upstream domains this area subscribes to (drives consumer
   wiring; rendered as a cross-domain edge).
+- `source_exclude` — list of glob patterns for files in the directory that should
+  never be treated as KB sources. Used by `kbi --update` when scanning for new
+  untracked files that might need a card. The following patterns are always applied
+  as built-in defaults even when `source_exclude` is absent; any patterns listed
+  here are appended to those defaults:
+    - `*.conflict*` — Google Drive / OneDrive sync-conflict artefacts
+    - `*.mm.md` — markdown outputs from mm2md conversion (derived, not source)
+    - `CLAUDE.md` — Claude Code project instructions (never a KB source)
+
+  Example — also exclude PDFs that are export copies of a `.pptx`:
+
+  ```yaml
+  source_exclude:
+    - "*.pdf"
+  ```
 
 ### 2.2 Profiles and resolution
 
