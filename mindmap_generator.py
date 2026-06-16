@@ -55,19 +55,19 @@ class FreeplaneMapGenerator:
     
     def _find_markdown_anchor_for_node(self, node: HierarchicalNode) -> str:
         """Find the appropriate GitHub-style anchor for a markdown node."""
-        # If this is a heading node, use its text
+        h = self._find_markdown_heading_node(node)
+        return self._generate_markdown_anchor(h.text or '') if h else ""
+
+    def _find_markdown_heading_node(self, node: HierarchicalNode):
+        """Return the nearest heading ancestor (or self) for a markdown node, or None."""
         if hasattr(node, 'node_type') and node.node_type == 'heading':
-            return self._generate_markdown_anchor(node.text or '')
-        
-        # For non-heading nodes, traverse up the hierarchy to find the nearest heading ancestor
+            return node
         current = node
         while current and hasattr(current, 'parent') and current.parent:
             current = current.parent
             if hasattr(current, 'node_type') and current.node_type == 'heading':
-                return self._generate_markdown_anchor(current.text or '')
-        
-        # If no heading ancestor found, return empty string (just file link)
-        return ""
+                return current
+        return None
     
     def create_mind_map(self, file_system_index: Dict[str, List[HierarchicalNode]],
                        keyword_entries: List[Any],
@@ -175,12 +175,14 @@ class FreeplaneMapGenerator:
                                  VIEW_TAG, VIEW_WORD, VIEW_DEPENDENCIES, VIEW_GLOSSARY)
         r = 'freeplane'
 
-        # Build card_path -> essence lookup so all views can annotate card nodes.
+        # Build card_path -> essence and card_path -> source_path lookups.
         self._card_essence_map = {}
-        for group in getattr(di, 'card_groups', {}).values():
+        self._card_source_map = {}  # card_path -> source_path
+        for source_path, group in getattr(di, 'card_groups', {}).items():
             for _label, card_path, card_essence in group.cards:
                 if card_essence:
                     self._card_essence_map[card_path] = card_essence
+                self._card_source_map[card_path] = source_path
 
         if (di.file_system or di.card_groups) and view_enabled(config, VIEW_FILE_SYSTEM, r):
             self._create_file_system_index(parent, di.file_system,
@@ -468,6 +470,23 @@ class FreeplaneMapGenerator:
         p = ET.SubElement(body, 'p')
         p.text = text
 
+    def _add_card_source_link(self, card_node: ET.Element, card_path: str) -> None:
+        """Add a single child to a card file node linking to its original source file."""
+        source_path = getattr(self, '_card_source_map', {}).get(card_path)
+        if not source_path:
+            return
+        try:
+            link_path = str(Path(source_path).relative_to(Path.cwd()))
+        except ValueError:
+            link_path = source_path
+        ET.SubElement(card_node, 'node', {
+            'ID': self._generate_unique_id(),
+            'CREATED': get_current_timestamp(),
+            'MODIFIED': get_current_timestamp(),
+            'TEXT': self._display_path(source_path),
+            'LINK': link_path
+        })
+
     def _create_card_group_node(self, parent: ET.Element, source_path: str, group):
         """Create a source-file node annotated with essence + child card leaves (D21)."""
         try:
@@ -590,30 +609,57 @@ class FreeplaneMapGenerator:
             self._add_details(file_node, self._card_essence_map.get(file_path, ''))
 
             # Add individual matches
-            for result in results:
-                match_text = result.node.text or result.matched_content[:100]
-                if len(match_text) > 100:
-                    match_text = match_text[:100] + "..."
-                
-                link = link_path
-                if hasattr(result.node, 'id') and result.node.id:
-                    # Handle markdown files specially
-                    if link_path.endswith(('.md', '.markdown')):
-                        # For markdown files, find the nearest heading ancestor to generate anchor
-                        anchor = self._find_markdown_anchor_for_node(result.node)
-                        if anchor:
-                            link += f"#{anchor}"
+            is_card = file_path.endswith('.kb.md')
+            if is_card:
+                self._add_card_source_link(file_node, file_path)
+            elif link_path.endswith(('.md', '.markdown')):
+                # For non-card markdown: one node per unique heading section
+                seen_anchors = {}  # anchor -> (heading_text, full_link)
+                no_heading = []
+                for result in results:
+                    if not (hasattr(result.node, 'id') and result.node.id):
+                        continue
+                    h = self._find_markdown_heading_node(result.node)
+                    if h:
+                        anchor = self._generate_markdown_anchor(h.text or '')
+                        if anchor not in seen_anchors:
+                            seen_anchors[anchor] = (h.text or anchor, f"{link_path}#{anchor}")
                     else:
-                        # For other file types (like Freeplane), use the node ID
+                        no_heading.append(result)
+                for _anchor, (text, link) in seen_anchors.items():
+                    ET.SubElement(file_node, 'node', {
+                        'ID': self._generate_unique_id(),
+                        'CREATED': get_current_timestamp(),
+                        'MODIFIED': get_current_timestamp(),
+                        'TEXT': text,
+                        'LINK': link
+                    })
+                for result in no_heading:
+                    match_text = result.node.text or result.matched_content[:100]
+                    if len(match_text) > 100:
+                        match_text = match_text[:100] + "..."
+                    ET.SubElement(file_node, 'node', {
+                        'ID': self._generate_unique_id(),
+                        'CREATED': get_current_timestamp(),
+                        'MODIFIED': get_current_timestamp(),
+                        'TEXT': match_text,
+                        'LINK': link_path
+                    })
+            else:
+                for result in results:
+                    match_text = result.node.text or result.matched_content[:100]
+                    if len(match_text) > 100:
+                        match_text = match_text[:100] + "..."
+                    link = link_path
+                    if hasattr(result.node, 'id') and result.node.id:
                         link += f"#{result.node.id}"
-                
-                ET.SubElement(file_node, 'node', {
-                    'ID': self._generate_unique_id(),
-                    'CREATED': get_current_timestamp(),
-                    'MODIFIED': get_current_timestamp(),
-                    'TEXT': match_text,
-                    'LINK': link
-                })
+                    ET.SubElement(file_node, 'node', {
+                        'ID': self._generate_unique_id(),
+                        'CREATED': get_current_timestamp(),
+                        'MODIFIED': get_current_timestamp(),
+                        'TEXT': match_text,
+                        'LINK': link
+                    })
     
     def _create_tag_index(self, parent: ET.Element, 
                          tag_results: Dict[str, List[tuple]]) -> ET.Element:
@@ -661,22 +707,24 @@ class FreeplaneMapGenerator:
                 })
                 self._add_details(file_node, self._card_essence_map.get(file_path, ''))
 
-                # Sort individual node matches alphabetically within each file (R-TAG-008)
-                sorted_matches = sorted(file_groups[file_path], key=lambda x: x[1].lower())
-                
-                # Create fragment hyperlinks to individual nodes (R-TAG-011).
-                # Skip matches with no node_id — those are file-level tags (e.g. markdown
-                # frontmatter) where the file_node above is already the correct link.
-                for node_id, node_text in sorted_matches:
-                    if not node_id:
-                        continue
-                    match_node = ET.SubElement(file_node, 'node', {
-                        'ID': self._generate_unique_id(),
-                        'CREATED': get_current_timestamp(),
-                        'MODIFIED': get_current_timestamp(),
-                        'TEXT': node_text,
-                        'LINK': f"{link_path}#{node_id}"
-                    })
+                if file_path.endswith('.kb.md'):
+                    self._add_card_source_link(file_node, file_path)
+                else:
+                    # Sort individual node matches alphabetically within each file (R-TAG-008)
+                    sorted_matches = sorted(file_groups[file_path], key=lambda x: x[1].lower())
+                    # Create fragment hyperlinks to individual nodes (R-TAG-011).
+                    # Skip matches with no node_id — those are file-level tags (e.g. markdown
+                    # frontmatter) where the file_node above is already the correct link.
+                    for node_id, node_text in sorted_matches:
+                        if not node_id:
+                            continue
+                        ET.SubElement(file_node, 'node', {
+                            'ID': self._generate_unique_id(),
+                            'CREATED': get_current_timestamp(),
+                            'MODIFIED': get_current_timestamp(),
+                            'TEXT': node_text,
+                            'LINK': f"{link_path}#{node_id}"
+                        })
         
         return tag_root
     
@@ -800,6 +848,10 @@ class FreeplaneMapGenerator:
                     'LINK': str(rel_path)
                 })
                 self._add_details(file_node, self._card_essence_map.get(file_path, ''))
+
+                if file_path.endswith('.kb.md'):
+                    self._add_card_source_link(file_node, file_path)
+                    continue
 
                 # Create match instance nodes as children of file node (R-WORD-013)
                 for match_instance in match_instances:
