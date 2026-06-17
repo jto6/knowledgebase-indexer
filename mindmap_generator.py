@@ -8,6 +8,7 @@ from pathlib import Path
 from collections import defaultdict
 import os
 import re
+import platform
 
 from core_handlers import generate_unique_id, get_current_timestamp, HierarchicalNode
 from search import SearchResult
@@ -328,12 +329,22 @@ class FreeplaneMapGenerator:
         Strips the home directory prefix, then replaces the hidden /.kb/ directory
         segment with a ':' separator so card paths like dev/proj/.kb/card.kb.md
         render as dev/proj:card.kb.md.
+
+        On Mac, also strips the OneDrive-TEXASINSTRUMENTS prefix when present.
         """
         path = Path(file_path)
         home_parts = Path.home().parts
         if path.parts[:len(home_parts)] == home_parts:
             remaining = path.parts[len(home_parts):]
             result = str(Path(*remaining)) if remaining else file_path
+
+            # On Mac, also strip OneDrive-TEXASINSTRUMENTS prefix if present
+            if platform.system() == 'Darwin':
+                onedrive_parts = ('Library', 'CloudStorage', 'OneDrive-TEXASINSTRUMENTS')
+                if len(remaining) >= len(onedrive_parts) and remaining[:len(onedrive_parts)] == onedrive_parts:
+                    # Strip the OneDrive prefix too
+                    remaining_after_onedrive = remaining[len(onedrive_parts):]
+                    result = str(Path(*remaining_after_onedrive)) if remaining_after_onedrive else ''
         else:
             result = file_path
         return result.replace('/.kb/', '::')
