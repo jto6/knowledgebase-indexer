@@ -622,6 +622,70 @@ class FreeplaneMapGenerator:
             for child in chunk:
                 range_node.append(child)
 
+    @staticmethod
+    def _file_type_of(link: str) -> str:
+        """Classify a file path by supported type.
+
+        .kb.md must be tested before .md since a card path ends with both.
+        """
+        if link.endswith('.kb.md'):
+            return '.kb.md'
+        if link.endswith(('.md', '.markdown')):
+            return '.md'
+        if link.endswith('.mm'):
+            return '.mm'
+        return 'other'
+
+    def _group_file_children_by_type(self, parent: ET.Element, threshold: int = 20) -> None:
+        """If parent has more than threshold file children, group them by file type.
+
+        Applies only to lists of sibling files (e.g. the files under a tag or
+        keyword leaf), never to sections within a single file.  When more than
+        one type is present the children are re-parented into per-type buckets
+        (.mm, .md, .kb.md); any bucket still over threshold is further reduced by
+        the alphabetical letter/range bucketing.  With only a single type present
+        a type split adds a pointless layer, so we fall back to letter bucketing.
+        """
+        children = list(parent)
+        if len(children) <= threshold:
+            return
+
+        type_labels = {
+            '.mm': 'Mind Maps (.mm)',
+            '.md': 'Markdown (.md)',
+            '.kb.md': 'Cards (.kb.md)',
+            'other': 'Other',
+        }
+        type_order = ['.mm', '.md', '.kb.md', 'other']
+
+        buckets: Dict[str, list] = {}
+        for child in children:
+            ftype = self._file_type_of(child.get('LINK', ''))
+            buckets.setdefault(ftype, []).append(child)
+
+        # Only one type present: a type split would add a single useless layer,
+        # so fall back to alphabetical bucketing instead.
+        if len(buckets) <= 1:
+            self._group_children_by_letter(parent, threshold)
+            return
+
+        for child in children:
+            parent.remove(child)
+
+        for ftype in type_order:
+            if ftype not in buckets:
+                continue
+            bucket_node = ET.SubElement(parent, 'node', {
+                'ID': self._generate_unique_id(),
+                'CREATED': get_current_timestamp(),
+                'MODIFIED': get_current_timestamp(),
+                'TEXT': type_labels[ftype]
+            })
+            # Keep files sorted so letter/range sub-bucketing stays ordered.
+            for child in sorted(buckets[ftype], key=lambda c: c.get('TEXT', '').lower()):
+                bucket_node.append(child)
+            self._group_children_by_letter(bucket_node, threshold)
+
     def _create_keyword_index(self, parent: ET.Element,
                             keyword_entries: List[Any]) -> ET.Element:
         """Create keyword index preserving exact hierarchical structure from keyword file."""
@@ -736,8 +800,11 @@ class FreeplaneMapGenerator:
                         'TEXT': match_text,
                         'LINK': link
                     })
-    
-    def _create_tag_index(self, parent: ET.Element, 
+
+        # Group the sibling file nodes by type when the list is long (R-KW).
+        self._group_file_children_by_type(parent)
+
+    def _create_tag_index(self, parent: ET.Element,
                          tag_results: Dict[str, List[tuple]]) -> ET.Element:
         """Create tag-based navigation index (R-TAG-005 to R-TAG-012)."""
         tag_root = ET.SubElement(parent, 'node', {
@@ -801,6 +868,9 @@ class FreeplaneMapGenerator:
                             'TEXT': node_text,
                             'LINK': f"{link_path}#{node_id}"
                         })
+
+            # Group this tag's sibling files by type when the list is long.
+            self._group_file_children_by_type(tag_node)
 
         self._group_children_by_letter(tag_root)
         return tag_root
