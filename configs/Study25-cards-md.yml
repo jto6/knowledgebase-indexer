@@ -1,6 +1,6 @@
 # Central knowledge-base markdown catalog (cross-repo).
 #
-# The registry of which repos contribute to the card-only knowledge database
+# The registry of which repos contribute to the card-only knowledge databas
 # in markdown renderer: generates per-domain slices into the central catalog
 # home (~/dev/kb/index/<domain>.md) that consumers (council members, projects,
 # ad-hoc sessions) subscribe to. Add more repo roots under `include` over time.

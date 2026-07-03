@@ -1,0 +1,26 @@
+# kbi configuration file for my home repositories - knowledge cards only
+directories:
+  include:
+    - "/home/jon/MyGoogleDrive"
+    - "/home/jon/TIGoogleDrive"
+    - "/home/jon/dev"
+  exclude:
+    - "**/node_modules/**"
+    - "**/.git/**"
+    - "**/build/**"
+    - "**/photos/**"
+    - "**/__pycache__/**"
+    - "**/.venv*/**"
+
+keywords:
+  files:
+    - path: "/home/jon/TIGoogleDrive/MyMaps/.kw.mmtxt"
+      domain: ["sdv-research", "automotive"]
+    - path: "/home/jon/MyGoogleDrive/MyMaps/.kw.mmtxt"
+      domain: ["sdv-research", "automotive"]
+
+output:
+  format: "freeplane"
+
+types:
+  include: [card]
