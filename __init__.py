@@ -38,4 +38,4 @@ def __getattr__(name):
 
 
 __all__ = ['KnowledgebaseIndexer', 'run_search', 'run_hash',
-           'run_manifest_sync', '_compute_dir_hash']
+           'run_manifest_sync', 'run_decisions', '_compute_dir_hash']

@@ -6,13 +6,16 @@ Status: **Phases 1–3 implemented** (Phase 1 2026-07-17: D1, D7, D8 in
 (`_dir_content_delta` + `--delta` file + skill contract), D5 `kbi hash` /
 `kbi manifest-sync` helper verbs (which also canonicalized the previously
 agent-improvised `dir_hash` formula), D6 git-recoverable ≤200-line diffs
-embedded per changed source, `.mm` diffed at the mm2md level). Delta mode
-in `kb-card.md` already carries D4's non-blocking rule (apply the
-recommended option, record durably, report under `Decisions made`), so of
-Phase 4 only the `decided: auto` markers, `kbi decisions` listing, and
-persist-plan-first checkpointing remain. Tests in
-`tests/unit/test_update_staleness.py`; documented in `REFERENCE.md`
-§3.1/§3.2/§5.7/§5.8 and `kb-card.md`. Motivating incident: the 2026-07-17
+embedded per changed source, `.mm` diffed at the mm2md level). Phase 4
+2026-07-18: D4 complete — `decided: auto|user` + `decided_on` markers on
+excluded/absorbed entries, `kbi decisions` audit verb, `status: pending`
+persist-plan-first checkpointing (kbi treats pending entries as work to
+resume; the delta lists them), and the `Decisions made` report section
+embedded in auto-commit message bodies. All phases are implemented; the
+behavior is captured normatively as PRD §6 (R-UPD-STALE/DELTA/LOOP/HELP).
+Tests in `tests/unit/test_update_staleness.py`; documented in
+`REFERENCE.md` §3.1/§3.2/§5.7/§5.8 and `kb-card.md`. Motivating incident:
+the 2026-07-17
 `./kbi.py configs/Study25-cards.yml --update` run found 14 stale directories
 and exhausted the five-hour token window after ~10 of them, even though most
 directories had tiny or zero real changes.

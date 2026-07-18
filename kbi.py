@@ -578,6 +578,9 @@ class KnowledgebaseIndexer:
                        (supersedes/exported_as/refines) or excluded files
                        whose recorded hash no longer matches — the recorded
                        decision needs re-deciding
+          pending    — [slug] card entries checkpointed with
+                       `status: pending` (plan written, body not yet
+                       authored) — an interrupted run to resume
           unchanged  — count of tracked sources whose hash still matches
 
         Paths are relative to the source directory (kb_dir's parent).
@@ -588,7 +591,8 @@ class KnowledgebaseIndexer:
         """
         source_dir = kb_dir.parent
         delta: Dict[str, Any] = {'bootstrap': False, 'changed': [], 'new': [],
-                                 'deleted': [], 'reopened': [], 'unchanged': 0}
+                                 'deleted': [], 'reopened': [], 'pending': [],
+                                 'unchanged': 0}
         cards = seg.get('cards', []) or []
         if not cards:
             delta['bootstrap'] = True
@@ -610,6 +614,11 @@ class KnowledgebaseIndexer:
         absorbed: Dict[Path, Dict[str, str]] = {}
         for card in cards:
             slug = str(card.get('slug', '') or '')
+            # A checkpointed entry: the plan (boundary + decisions) was
+            # persisted but the card body was not yet authored — an
+            # interrupted run to resume, regardless of content drift.
+            if str(card.get('status', '') or '') == 'pending':
+                delta['pending'].append(slug or str(card.get('file', '') or ''))
             for field in ('supersedes', 'exported_as', 'refines'):
                 raw_list = card.get(field) or []
                 if isinstance(raw_list, (str, dict)):
@@ -721,9 +730,9 @@ class KnowledgebaseIndexer:
 
     @staticmethod
     def _delta_has_drift(delta: Dict[str, Any]) -> bool:
-        """True if a _dir_content_delta result contains any drift."""
+        """True if a _dir_content_delta result contains any drift or unfinished work."""
         return bool(delta['bootstrap'] or delta['changed'] or delta['new']
-                    or delta['deleted'] or delta['reopened'])
+                    or delta['deleted'] or delta['reopened'] or delta['pending'])
 
     @staticmethod
     def _dir_content_changed(seg: Dict[str, Any], kb_dir: Path) -> bool:
@@ -827,15 +836,38 @@ class KnowledgebaseIndexer:
             current = parent
 
     @staticmethod
-    def _commit_kb_updates(directory: str) -> None:
+    def _extract_decisions(output: str) -> str:
+        """Best-effort extraction of the 'Decisions made' report section.
+
+        Returns the section (capped at 40 lines, stopping at the next
+        heading) so headless judgment calls land in the auto-commit message
+        body — making `git log` a durable decision journal.  Empty string
+        when the report has no such section.
+        """
+        m = re.search(r'^(?:#{1,6}\s*|\*{2})Decisions made.*$', output,
+                      re.MULTILINE | re.IGNORECASE)
+        if not m:
+            return ''
+        lines = output[m.start():].splitlines()
+        body = [lines[0]]
+        for line in lines[1:]:
+            if re.match(r'^#{1,6}\s', line) or len(body) >= 40:
+                break
+            body.append(line)
+        return '\n'.join(body).strip()
+
+    @staticmethod
+    def _commit_kb_updates(directory: str, body: str = '') -> None:
         """Commit refreshed `.kb/` card state in a git work tree — nothing else.
 
         Stages and commits only paths under `<directory>/.kb` using an explicit
         pathspec with `git commit --only`, so changes staged elsewhere in the
         repository are neither committed nor disturbed.  `-s` adds the
-        Signed-off-by trailer from the repository's git identity.  No-op when
-        the directory is outside a work tree, `update_commit: false` is set in
-        the nearest kb.yml, or `.kb/` is clean.
+        Signed-off-by trailer from the repository's git identity.  `body`
+        (e.g. the run's 'Decisions made' section) is appended to the commit
+        message.  No-op when the directory is outside a work tree,
+        `update_commit: false` is set in the nearest kb.yml, or `.kb/` is
+        clean.
         """
         def git(*args: str):
             return subprocess.run(['git', '-C', directory, *args],
@@ -855,6 +887,8 @@ class KnowledgebaseIndexer:
             return
         prefix = git('rev-parse', '--show-prefix').stdout.strip().rstrip('/') or '.'
         msg = f"kb: refresh knowledge cards for {prefix} (kbi --update)"
+        if body:
+            msg += '\n\n' + body
         r = git('commit', '--only', '-s', '-m', msg, '--', '.kb')
         if r.returncode != 0:
             print(f"Warning: git commit .kb failed in {directory}: "
@@ -975,6 +1009,7 @@ class KnowledgebaseIndexer:
             'new': list(delta['new']),
             'deleted': [dict(e) for e in delta['deleted']],
             'reopened': [dict(e) for e in delta['reopened']],
+            'pending': list(delta['pending']),
         }
         for entry in doc['changed']:
             diff = self._source_diff(directory, entry['path'], entry['old_hash'])
@@ -1042,7 +1077,8 @@ class KnowledgebaseIndexer:
                 refreshed += 1
                 consecutive_failures = 0
                 if not no_commit:
-                    self._commit_kb_updates(d)
+                    self._commit_kb_updates(
+                        d, body=self._extract_decisions(proc.stdout or ''))
                 continue
 
             print(f"Warning: /kb-card returned {proc.returncode} for {d}",
@@ -1652,8 +1688,89 @@ def run_manifest_sync(argv: List[str]) -> int:
     print(f"  excluded entries updated: {stats['excluded']}")
     print(f"  dir_hash: {'changed' if dir_hash_changed else 'unchanged'}")
     print(f"  dir_fingerprint: {'refreshed' if new_fp != old_fp else 'unchanged'}")
+    pending = [str(c.get('slug', '?')) for c in (seg.get('cards') or [])
+               if str(c.get('status', '') or '') == 'pending']
+    if pending:
+        print(f"  warning: {len(pending)} entr{'ies' if len(pending) != 1 else 'y'} "
+              f"still pending (unauthored bodies): {', '.join(pending)}")
     for w in warnings:
         print(f"  warning: {w}")
+    return 0
+
+
+def run_decisions(argv: List[str]) -> int:
+    """`kbi decisions [<root-dir>]` — list auto-made segmentation decisions.
+
+    Walks the tree under root-dir (default: current directory) for managed
+    directories (`.kb/segmentation.yml`) and prints every entry marked
+    `decided: auto` — exclusions and hashed supersedes/exported_as records
+    written headlessly by /kb-card delta mode — newest first, so decisions
+    made by unattended --update runs can be audited without terminal
+    scrollback.  Accepting a decision is free (do nothing); to override,
+    edit the manifest (or re-run /kb-card interactively), which flips the
+    entry to `decided: user`.
+    """
+    try:
+        import yaml as _yaml
+    except ImportError:
+        print('Error: PyYAML not available', file=sys.stderr)
+        return 2
+
+    parser = argparse.ArgumentParser(
+        prog='kbi decisions',
+        description='List auto-made segmentation decisions (decided: auto), newest first.')
+    parser.add_argument('root', nargs='?', default='.',
+                        help='Tree to scan for managed directories (default: .)')
+    parser.add_argument('--all', action='store_true',
+                        help='Include user-ratified decisions (decided: user) too')
+    args = parser.parse_args(argv)
+
+    rows: List[tuple] = []  # (decided_on, directory, kind, path, detail)
+
+    def note(directory: str, kind: str, entry: Dict[str, Any], detail: str) -> None:
+        decided = str(entry.get('decided', '') or '')
+        if decided != 'auto' and not (args.all and decided == 'user'):
+            return
+        rows.append((str(entry.get('decided_on', '') or ''), directory,
+                     f"{kind}{'' if decided == 'auto' else ' (user)'}",
+                     str(entry.get('path', '') or ''), detail))
+
+    root = Path(args.root).resolve()
+    for dirpath, dirs, _files in os.walk(str(root)):
+        dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
+        seg_path = Path(dirpath) / '.kb' / 'segmentation.yml'
+        if not seg_path.is_file():
+            continue
+        try:
+            seg = _yaml.safe_load(seg_path.read_text(encoding='utf-8')) or {}
+        except Exception:
+            continue
+        for entry in (seg.get('excluded') or []):
+            if isinstance(entry, dict):
+                note(dirpath, 'excluded', entry,
+                     str(entry.get('reason', '') or ''))
+        for card in (seg.get('cards') or []):
+            for field in ('supersedes', 'exported_as'):
+                raw_list = card.get(field)
+                if not isinstance(raw_list, list):
+                    continue
+                for entry in raw_list:
+                    if isinstance(entry, dict):
+                        note(dirpath, field, entry,
+                             f"absorbed into card '{card.get('slug', '?')}'")
+
+    if not rows:
+        print('No auto-made decisions recorded.')
+        return 0
+    rows.sort(key=lambda r: r[0], reverse=True)
+    for decided_on, directory, kind, path, detail in rows:
+        date_s = decided_on or '(no date)'
+        detail_s = f" — {detail}" if detail else ''
+        print(f"{date_s}  {kind:<12} {path}{detail_s}")
+        print(f"{'':<12}in {directory}")
+    print(f"\n{len(rows)} decision{'s' if len(rows) != 1 else ''}. "
+          "Accepting is free; to override, edit the manifest entry "
+          "(set decided: user) or re-run /kb-card interactively.")
     return 0
 
 
@@ -1666,6 +1783,8 @@ def main():
         return run_hash(argv[1:])
     if argv and argv[0] == 'manifest-sync':
         return run_manifest_sync(argv[1:])
+    if argv and argv[0] == 'decisions':
+        return run_decisions(argv[1:])
 
     parser = argparse.ArgumentParser(
         description="Generate navigational knowledge indexes for structured file collections (Freeplane .mm by default)",

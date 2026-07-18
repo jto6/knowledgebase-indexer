@@ -17,7 +17,8 @@ import yaml
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from kbi import KnowledgebaseIndexer, run_hash, run_manifest_sync, _compute_dir_hash
+from kbi import (KnowledgebaseIndexer, run_hash, run_manifest_sync,
+                 run_decisions, _compute_dir_hash)
 
 
 def _sha(path: Path) -> str:
@@ -306,6 +307,97 @@ class TestSourceDiff:
         assert doc['unchanged'] == 0
         assert doc['changed'][0]['path'] == 'A.md'
         assert '+line2 edited' in doc['changed'][0]['diff']
+
+
+@pytest.mark.quick
+class TestPendingCheckpoint:
+    """Phase 4: status: pending keeps a directory resumable, not re-derived."""
+
+    def test_pending_entry_is_drift_even_when_hashes_match(self, tmp_path):
+        d = _make_dir(tmp_path, {'A.mm': 'alpha', 'B.mm': 'beta'})
+        seg = {'cards': [
+            {'slug': 'a', 'source': '../A.mm', 'source_hash': _sha(d / 'A.mm')},
+            {'slug': 'b', 'source': '../B.mm', 'source_hash': _sha(d / 'B.mm'),
+             'status': 'pending'},
+        ]}
+        delta = KnowledgebaseIndexer._dir_content_delta(seg, d / '.kb')
+        assert delta['pending'] == ['b']
+        assert delta['changed'] == [] and delta['new'] == []
+        assert KnowledgebaseIndexer._delta_has_drift(delta) is True
+
+    def test_no_pending_no_drift(self, tmp_path):
+        d = _make_dir(tmp_path, {'A.mm': 'alpha'})
+        seg = {'cards': [{'slug': 'a', 'source': '../A.mm',
+                          'source_hash': _sha(d / 'A.mm')}]}
+        delta = KnowledgebaseIndexer._dir_content_delta(seg, d / '.kb')
+        assert delta['pending'] == []
+        assert KnowledgebaseIndexer._delta_has_drift(delta) is False
+
+
+@pytest.mark.quick
+class TestDecisionsListing:
+    """Phase 4: `kbi decisions` audit trail."""
+
+    def _managed(self, root: Path, name: str, seg: dict) -> None:
+        d = root / name
+        (d / '.kb').mkdir(parents=True)
+        (d / '.kb' / 'segmentation.yml').write_text(
+            yaml.safe_dump(seg, sort_keys=False))
+
+    def test_lists_auto_decisions_newest_first(self, tmp_path, capsys):
+        self._managed(tmp_path, 'one', {
+            'cards': [{'slug': 'a', 'source': '../A.md',
+                       'supersedes': [{'path': '../A_old.md',
+                                       'source_hash': 'sha256:x',
+                                       'decided': 'auto',
+                                       'decided_on': '2026-07-10'}]}],
+            'excluded': [{'path': '../Delme.md', 'reason': 'disposable',
+                          'source_hash': 'sha256:y',
+                          'decided': 'auto', 'decided_on': '2026-07-18'}],
+        })
+        self._managed(tmp_path, 'two', {
+            'cards': [],
+            'excluded': [{'path': '../Keep.md', 'reason': 'ratified',
+                          'source_hash': 'sha256:z',
+                          'decided': 'user', 'decided_on': '2026-07-19'}],
+        })
+        assert run_decisions([str(tmp_path)]) == 0
+        out = capsys.readouterr().out
+        # user-decided entry hidden by default; auto entries newest first
+        assert 'Keep.md' not in out
+        assert out.index('Delme.md') < out.index('A_old.md')
+        assert '2 decisions' in out
+
+    def test_all_flag_includes_user_decisions(self, tmp_path, capsys):
+        self._managed(tmp_path, 'one', {
+            'cards': [],
+            'excluded': [{'path': '../Keep.md', 'reason': 'ratified',
+                          'source_hash': 'sha256:z',
+                          'decided': 'user', 'decided_on': '2026-07-19'}],
+        })
+        assert run_decisions([str(tmp_path), '--all']) == 0
+        assert 'Keep.md' in capsys.readouterr().out
+
+    def test_empty_tree(self, tmp_path, capsys):
+        assert run_decisions([str(tmp_path)]) == 0
+        assert 'No auto-made decisions' in capsys.readouterr().out
+
+
+@pytest.mark.quick
+class TestExtractDecisions:
+
+    def test_extracts_section_until_next_heading(self):
+        out = ("Report intro.\n\n## Decisions made\n"
+               "- excluded ../Delme.mm (disposable-by-name)\n"
+               "- supersedes: A_old.mm absorbed into 'a'\n\n"
+               "## Tags\nreused: sdv\n")
+        body = KnowledgebaseIndexer._extract_decisions(out)
+        assert body.startswith('## Decisions made')
+        assert 'Delme.mm' in body and 'A_old.mm' in body
+        assert 'Tags' not in body and 'reused' not in body
+
+    def test_no_section_returns_empty(self):
+        assert KnowledgebaseIndexer._extract_decisions('All current.') == ''
 
 
 @pytest.mark.quick

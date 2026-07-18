@@ -349,7 +349,10 @@ it is *not* an index of cards (that is the cards themselves, plus
   treats the file as tracked-and-unchanged, and `/kb-card` skips it without
   re-evaluation. Content drift re-opens the decision (the file is re-surfaced
   as new); deleting the file just prunes the entry at the next reconcile. A
-  bare-string entry (path only) excludes without hash tracking.
+  bare-string entry (path only) excludes without hash tracking. Entries also
+  carry `decided:` (`user` = answered at the review gate, `auto` = applied
+  headlessly by delta mode) and `decided_on:` (ISO date) — see
+  `kbi decisions` (§5.8) for auditing auto decisions.
 
 ### 3.2 Card entry fields
 
@@ -372,7 +375,14 @@ it is *not* an index of cards (that is the cards themselves, plus
   `{path: ../foo_v1.pdf, source_hash: sha256:...}` — so that editing the
   absorbed file re-opens the decision (`kbi --update` marks the directory
   stale and `/kb-card` re-surfaces the file as new). The legacy bare-string
-  form (path only) remains accepted and tracks no hash.
+  form (path only) remains accepted and tracks no hash. Dict entries also
+  carry `decided:`/`decided_on:` (same semantics as `excluded`, §3.1).
+- `status` — transient checkpoint marker. `pending` means the entry's plan
+  (boundary + decisions) is persisted but its card body is not yet authored;
+  `/kb-card` writes it at the Step 2.5 checkpoint and removes it as each
+  body lands. `kbi --update` treats pending entries as work to resume (the
+  directory stays stale and the delta lists them), so an interrupted run
+  never re-derives its analysis. Absent in a completed run.
 - `dir_hash` — present only on `kind: dir_summary` entries. Canonical formula
   (owned by `kbi manifest-sync`, §5.8): `sha256:<hex>` of the sorted **unique**
   `source_hash` values for all sources in the directory, newline-joined.
@@ -700,7 +710,9 @@ directory that contains a `.kb/segmentation.yml`:
    authoritative (computed from the manifest's recorded hashes) and strictly
    scopes the agent's work: `unchanged` (count — untouchable), `changed`
    (path, old/new hash, bound card slugs), `new`, `deleted`, `reopened`
-   (a recorded exclusion/supersession whose input drifted), `bootstrap`.
+   (a recorded exclusion/supersession whose input drifted), `pending`
+   (checkpointed entries from an interrupted run — resume authoring, no
+   re-analysis), `bootstrap`.
    Each `changed` entry also carries a unified `diff` when the previous
    content is recoverable — the directory is a git work tree and the HEAD
    version matches the recorded hash (guaranteed right after an auto-commit,
@@ -745,14 +757,15 @@ A directory without a `segmentation.yml` (no cards authored yet) is skipped —
 with many stale directories, this can be slow. `--update` is intended for
 scheduled or pre-commit use, not interactive indexing.
 
-### 5.8 `kbi hash` / `kbi manifest-sync` — mechanical manifest helpers
+### 5.8 `kbi hash` / `kbi manifest-sync` / `kbi decisions` — manifest helpers
 
 Owned-by-tooling verbs so `/kb-card` never hand-computes hashes or
-serializations:
+serializations, and so headless decisions stay auditable:
 
 ```
 python3 kbi.py hash <file>...        # sha256:<hex>  <path> — canonical source_hash
 python3 kbi.py manifest-sync [<dir>] # refresh a manifest's derivable fields
+python3 kbi.py decisions [<root>]    # list decided: auto entries, newest first
 ```
 
 - `hash` prints the canonical KB content hash per file: sha256 of the **raw
@@ -767,7 +780,16 @@ python3 kbi.py manifest-sync [<dir>] # refresh a manifest's derivable fields
   entries. Because it **ratifies current content as the decided state**,
   `/kb-card` runs it only as the final step of a successful pass — never to
   silence unreviewed drift. YAML comments and formatting are normalized on
-  rewrite.
+  rewrite. It also warns about entries still marked `status: pending`
+  (unauthored bodies from an interrupted run).
+- `decisions` walks the tree under `<root>` (default `.`) for managed
+  directories and prints every `decided: auto` entry (exclusions and hashed
+  `supersedes`/`exported_as` records written headlessly by delta mode),
+  newest first — the durable audit trail for unattended `--update` runs.
+  `--all` includes `decided: user` entries too. Accepting a decision is
+  free (do nothing); overriding is a manifest edit (set `decided: user`) or
+  an interactive `/kb-card` run. Decisions also appear in each run's
+  `Decisions made` report section and in the auto-commit message bodies.
 
 ## 6. Consumer Subscription Model
 

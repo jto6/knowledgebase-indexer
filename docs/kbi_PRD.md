@@ -254,6 +254,33 @@ file_types:
 - **R-PERF-002**: Minimize memory usage during file processing
 - **R-PERF-003**: Support caching for improved performance on repeated operations
 
+## 6. Card Refresh (`--update`) Requirements
+
+Token-efficiency design rationale: `docs/UPDATE_TOKEN_EFFICIENCY.md`.
+Manifest field semantics: `docs/REFERENCE.md` §3; command behavior: §5.7–5.8.
+
+### 6.1 Staleness Detection
+- **R-UPD-STALE-001**: Use a two-level staleness check per managed directory — a stat-only mtime `dir_fingerprint`, then a content-level `source_hash` comparison — and invoke Claude only on real content drift
+- **R-UPD-STALE-002**: Treat files absorbed via `supersedes`/`exported_as`/`refines` as tracked; their presence on disk never marks the directory stale
+- **R-UPD-STALE-003**: When an absorbed entry records a `source_hash` (dict form), content drift in the absorbed file marks the directory stale so the decision can be re-decided
+- **R-UPD-STALE-004**: Treat files in the manifest's `excluded:` section as tracked-and-unchanged while their recorded hash matches; mark stale on drift; deletion of an absorbed or excluded file is never staleness (its entry is pruned at the next reconcile)
+- **R-UPD-STALE-005**: Treat a card entry without a `source_hash` as tracked-but-uncomparable; it must not surface its own source as new
+- **R-UPD-STALE-006**: Treat card entries marked `status: pending` as unfinished work — the directory stays stale until their bodies are authored
+
+### 6.2 Delta Handoff
+- **R-UPD-DELTA-001**: Write a per-directory content delta file and invoke `claude -p '/kb-card --delta <file>'`; fall back to plain `/kb-card` only when the delta cannot be written
+- **R-UPD-DELTA-002**: The delta lists `changed` (path, old/new hash, bound card slugs), `new`, `deleted` (path, card slugs), `reopened` (recorded decision + old/new hash), `pending` (slugs to resume), `bootstrap`, and an `unchanged` count — computed values are authoritative for the agent
+- **R-UPD-DELTA-003**: Embed a unified diff (≤200 lines) per changed source when the previous content is recoverable from git HEAD and matches the recorded hash; diff `.mm` sources at the mm2md level; omit the diff otherwise
+
+### 6.3 Refresh Loop
+- **R-UPD-LOOP-001**: Abort the refresh loop when the Claude CLI reports a spend/usage limit or fails twice consecutively; list the still-stale directories for the next run
+- **R-UPD-LOOP-002**: After each successful refresh in a git work tree, commit only that directory's `.kb/` paths (explicit pathspec; pre-staged unrelated changes neither committed nor disturbed) with a `Signed-off-by` trailer from the repository's git identity and the run's `Decisions made` section in the body; suppress via `--no-commit` or `update_commit: false` in the nearest kb.yml; never push
+
+### 6.4 Manifest Helper Verbs
+- **R-UPD-HELP-001**: `kbi hash <file>...` prints the canonical `source_hash` — sha256 of the file's raw bytes (for `.mm` sources, the `.mm` itself, never a conversion)
+- **R-UPD-HELP-002**: `kbi manifest-sync [<dir>]` recomputes all derivable manifest fields (card `source_hash`, hashed absorbed/excluded entries, `dir_hash` via the canonical sorted-unique-newline-joined formula, `dir_fingerprint`, `updated`) and reports what changed; it ratifies current content and is run only at the end of a successful `/kb-card` pass
+- **R-UPD-HELP-003**: `kbi decisions [<root>]` lists all `decided: auto` manifest entries under a tree, newest first (`--all` includes `decided: user`), as the audit trail for headless runs
+
 ---
 
 ## PART II: INFORMATIVE
