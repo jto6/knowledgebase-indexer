@@ -7,7 +7,7 @@ source: ..
 domain: technical
 tags: [kbi, indexer, knowledgebase, architecture, python, testing]
 created: 2026-06-11
-updated: 2026-06-16
+updated: 2026-07-17
 ---
 
 # KBI Root Directory
@@ -22,5 +22,5 @@ updated: 2026-06-16
 - **Search and keywords** (`search.py`, `keywords.py`): `HierarchicalSearchEngine` narrows scope through colon-separated keyword sequences (`:` inside character classes is not split); `KeywordFileParser` parses tab-indented keyword files where leaf nodes are search patterns; domain-scoped keyword files via `{path, domain}` dict entries
 - **Renderers**: `mindmap_generator.py` (Freeplane XML with letter-bucket grouping, essence DETAILS panels, source-link children for card nodes, and global cross-domain merge views) and `markdown_renderer.py` (Markdown navigational index) both serialize the same model as linked hierarchies
 - **Configuration layer**: `config.py` (YAML loading, JSON Schema validation against `config_schema.json`), `config_schema.json` (draft-07 contract — enforces `directories`, `keywords.files` with global and domain-scoped forms, `output`, `views`, `types`)
-- **Supporting modules**: `word_filter.py` (technical stop-word extraction), `logging_config.py` (dual-sink logging + `LoggedOperation`), `kb-rename-domain.py` (domain rename CLI utility)
+- **Supporting modules**: `word_filter.py` (technical stop-word extraction), `logging_config.py` (dual-sink logging + `LoggedOperation`), `kb-rename-domain.py` (domain rename CLI utility), `doc_to_markdown.py` (standalone CLI that uploads PDF/Word/PowerPoint to the Claude Files API and converts them to analysis-optimized markdown — a manual pre-processing step, not a `FileHandler` plugin)
 - **Package and test infrastructure**: `__init__.py` (lazy import of `KnowledgebaseIndexer` / `run_search` for test imports), `run_tests.py` (pytest CLI wrapper with five suites: quick, unit, integration, all, coverage)

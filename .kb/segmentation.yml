@@ -1,8 +1,8 @@
 # .kb/segmentation.yml — reviewed segmentation manifest for this directory.
 version: 1
-updated: 2026-06-16
+updated: 2026-07-17
 density: normal
-dir_fingerprint: sha256:02e73a6a32c291328f65382a9e69b8c0072f76cbe1be839f608fc2c6e16aa345
+dir_fingerprint: sha256:bf2f5e1c035cc334f531a133e6da4f647f45b21f4229551fd32d20c9d06d42c7
 cards:
   - slug: readme
     id: 7b7289d6-e382-4aaa-a8ea-f9e1598a6a2c
@@ -109,10 +109,17 @@ cards:
     title: KBI Configuration Schema
     source_hash: sha256:57125219cac6a1033dc5b69936c2f56d6ff6b2e255b9bef950f76557bf3d7d02
 
+  - slug: doc-to-markdown
+    id: adc1481c-1b12-400f-b681-4f81ebc9f034
+    file: doc-to-markdown.kb.md
+    source: ../doc_to_markdown.py
+    title: Document to Markdown Converter
+    source_hash: sha256:862e6dfb8308e09476395f778a66826c6a1bb92ccb6e3f831e48e1f2812a1180
+
   - slug: kbi-dir
     id: 4df0ddb1-7af7-4de5-aca5-91ba0ab06979
     file: kbi.kb.md
     kind: dir_summary
     source: ..
     title: KBI Root Directory
-    dir_hash: sha256:593b30a4456960217ecda4c1b7177f4221711ae6fd58600274c0cd1ec263695a
+    dir_hash: sha256:aedd9ac21a8157fa3416d0747845ca46e5c5d6d500a9bab4a37aa8bc656d4a22
