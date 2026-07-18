@@ -6,7 +6,7 @@ source: "[mindmap_generator.py](<../mindmap_generator.py>)"
 domain: technical
 tags: [kbi, rendering, freeplane, architecture, model]
 created: 2026-06-11
-updated: 2026-06-16
+updated: 2026-07-18
 ---
 
 # Freeplane Mindmap Generator
@@ -24,6 +24,7 @@ updated: 2026-06-16
 - **`_add_card_source_link(card_node, card_path)`**: appends a sole child to a `.kb.md` file node linking back to its source file (via `_card_source_map`); used in keyword, tag, and word views
 - **`_display_path(file_path)`**: strips the home directory prefix, then replaces `/.kb/` with `::` — so `dev/proj/.kb/card.kb.md` renders as `dev/proj::card.kb.md`
 - **Letter-bucket grouping**: `_group_children_by_letter(parent, threshold=20)` re-parents children into per-letter (A–Z, `#`) buckets when count exceeds threshold; oversized buckets are further split by `_group_children_by_range()` into equal-size chunks labeled with prefix-range strings (`"SAF–SMO"`); applied to keyword and tag index roots
+- **File-type grouping**: `_group_file_children_by_type(parent, threshold=20)` re-parents an oversized sibling-file list (under a keyword or tag leaf) into per-type buckets (`.mm`, `.md`, `.kb.md`, Other) via `_file_type_of()` (checks `.kb.md` before `.md` since a card path ends with both); each bucket is then letter-bucketed if still oversized; with only one type present it falls back straight to `_group_children_by_letter()` instead of adding a pointless single-type layer
 - **`_linked_node()`**: creates a `<node>` with `TEXT` + optional `LINK` (relative path preferred; falls back to absolute)
 - **Markdown anchors**: `_generate_markdown_anchor()` converts heading text to GitHub-style `#anchor`; `_find_markdown_heading_node()` traverses up to the nearest heading ancestor
 - **XML formatting**: `minidom.parseString()` / `toprettyxml()` with post-processing to strip blank lines; provenance marker comment inserted inside `<map>` to mark the output as kbi-generated
