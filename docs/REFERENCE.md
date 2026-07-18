@@ -341,6 +341,15 @@ it is *not* an index of cards (that is the cards themselves, plus
   least one file was added, removed, renamed, resized, or touched since the last
   `/kb-card` run.
 - `cards` — the list of card entries.
+- `excluded` — optional list of files the author evaluated and deliberately
+  decided **not** to card (disposable scratch, templates with no distillable
+  knowledge, empty files). Each entry: `path` (relative to `.kb/`), `reason`
+  (short, human-auditable), `source_hash` (`sha256:<hex>` of the file at
+  decision time). The decision stands while the hash matches: `kbi --update`
+  treats the file as tracked-and-unchanged, and `/kb-card` skips it without
+  re-evaluation. Content drift re-opens the decision (the file is re-surfaced
+  as new); deleting the file just prunes the entry at the next reconcile. A
+  bare-string entry (path only) excludes without hash tracking.
 
 ### 3.2 Card entry fields
 
@@ -357,6 +366,13 @@ it is *not* an index of cards (that is the cards themselves, plus
   invalidates it. It is not immutable.
 - `source_hash` — `sha256:<hex>` of the source at last author/refresh; drives
   drift detection.
+- `supersedes` / `exported_as` — optional lists of absorbed source files
+  (near-duplicates/earlier versions, and format exports, respectively) that
+  are not carded separately. Preferred entry form is a dict —
+  `{path: ../foo_v1.pdf, source_hash: sha256:...}` — so that editing the
+  absorbed file re-opens the decision (`kbi --update` marks the directory
+  stale and `/kb-card` re-surfaces the file as new). The legacy bare-string
+  form (path only) remains accepted and tracks no hash.
 - `dir_hash` — present only on `kind: dir_summary` entries. `sha256:<hex>` of the
   sorted `source_hash` values for all sources in the directory at the time the
   dir_summary was last authored. `/kb-card` uses this to decide whether to
@@ -384,6 +400,9 @@ cards:
     id: 7f3a0000-0000-0000-0000-000000000000
     file: foo.architecture.kb.md
     source: ../reports/foo.pdf
+    supersedes:                        # absorbed near-duplicate/earlier version
+      - path: ../reports/foo_v1.pdf   #   dict form: hash re-opens the decision
+        source_hash: sha256:1c9e22b0...
     scope:
       section: "Architecture"
       signature: "VMkernel, VMFS, cluster file system"
@@ -397,6 +416,10 @@ cards:
     source: ..
     title: Reports
     dir_hash: sha256:7f3c19a2...     # hash of sorted source_hashes; refresh trigger
+excluded:                            # evaluated, deliberately not carded
+  - path: ../reports/Delme.md
+    reason: disposable-by-name
+    source_hash: sha256:44d0be71...  # decision stands while this matches
 ```
 
 ## 4. The `/kb-card` Command (author-side)
@@ -669,6 +692,33 @@ directory that contains a `.kb/segmentation.yml`:
    ```
    Wait for completion before proceeding to the next directory.
 5. After all stale directories are refreshed, proceed with normal indexing.
+
+The mtime fingerprint is backed by a content-level check: when the fingerprint
+differs but every tracked source's bytes still match its recorded
+`source_hash`, the directory is treated as current (no Claude invocation).
+Files absorbed into a card via `supersedes` / `exported_as` / `refines` count
+as tracked for this check — a superseded or exported file still present on
+disk never marks the directory stale. When such an entry records a
+`source_hash` (dict form, §3.2), content drift in the absorbed file *does*
+mark the directory stale so the supersession decision can be re-decided.
+Files in the manifest's `excluded:` section (§3.1) behave the same way:
+tracked-and-unchanged while their hash matches, stale on drift, and a
+deletion never triggers a refresh (the entry is pruned at the next
+reconcile).
+
+**Fail fast.** The refresh loop aborts early when the Claude CLI output
+reports a spend/usage limit, or after two consecutive nonzero exits. The
+remaining directories are listed and stay stale; the next `--update` run picks
+them up.
+
+**Auto-commit.** After each successful refresh, if the directory is inside a
+git work tree, kbi commits that directory's `.kb/` changes — and nothing else
+(`git add -A -- .kb` + `git commit --only -- .kb`, so changes staged elsewhere
+in the repository are neither committed nor disturbed). The message is
+`kb: refresh knowledge cards for <repo-relative-dir> (kbi --update)` with a
+`Signed-off-by` trailer from the repository's git identity (`git commit -s`).
+Nothing is ever pushed. Opt out per run with `--no-commit`, or per area with
+`update_commit: false` in the nearest `.kb/kb.yml`.
 
 If `--update` is combined with a normal index run, the refresh pass runs first.
 A directory without a `segmentation.yml` (no cards authored yet) is skipped —

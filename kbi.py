@@ -496,6 +496,39 @@ class KnowledgebaseIndexer:
         return patterns
 
     @staticmethod
+    def _content_hash_matches(path: Path, stored_hash: str) -> bool:
+        """True if path's sha256 matches stored_hash (prefix compare).
+
+        stored_hash may be a truncated prefix (e.g. 'sha256:5ca9f4a552e44df8');
+        only as many characters as were stored are compared.  An unreadable
+        file counts as a mismatch.
+        """
+        try:
+            full = 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            return False
+        return full.startswith(stored_hash)
+
+    @staticmethod
+    def _split_manifest_path_entry(entry: Any) -> tuple:
+        """Return (path_str, stored_hash) from a manifest path entry.
+
+        Accepts the bare-string form ('../foo.mm' — no hash tracked) and the
+        dict form ({path: ../foo.mm, source_hash: sha256:...}).  The path may
+        be written as a markdown link; URLs yield ('', '').
+        """
+        if isinstance(entry, dict):
+            raw_path = str(entry.get('path', '') or '').strip()
+            stored = str(entry.get('source_hash', '') or '').strip()
+        else:
+            raw_path = str(entry).strip()
+            stored = ''
+        p = KnowledgebaseIndexer._parse_md_link_path(raw_path)
+        if not p or p.startswith('http'):
+            return '', ''
+        return p, stored
+
+    @staticmethod
     def _dir_content_changed(seg: Dict[str, Any], kb_dir: Path) -> bool:
         """Return True if any source file referenced in segmentation.yml has changed content.
 
@@ -503,7 +536,16 @@ class KnowledgebaseIndexer:
         SHA-256 of that file's bytes.  Files that have been added or removed
         also count as changed.  Pure-URL sources and dir_summary cards (whose
         source is the directory itself, tracked via `dir_hash` not `source_hash`)
-        are skipped.
+        are skipped.  Files absorbed into a card via `supersedes` /
+        `exported_as` / `refines` are treated as tracked: their presence on
+        disk does not count as a new source.  When an absorbed entry records
+        a `source_hash` (dict form: {path, source_hash}), content drift
+        re-opens the decision — the directory is stale; bare-string entries
+        track no hash.  Files listed in the top-level `excluded:` section
+        are likewise treated as tracked-and-unchanged while their recorded
+        hash matches; drift makes the directory stale so the exclusion can
+        be re-decided.  Deleting an absorbed or excluded file is not
+        staleness — its entry is simply pruned at the next reconcile.
 
         This is a content-level check that avoids false positives from mtime
         changes (git checkout, sync, touch) that trick the mtime-based
@@ -516,7 +558,25 @@ class KnowledgebaseIndexer:
             return True
 
         seen_sources: set = set()
+        absorbed_sources: set = set()
         for card in cards:
+            # Files absorbed into a card (supersedes / exported_as / refines)
+            # are deliberately not carded separately; their presence on disk
+            # must not look like a new untracked source in the scan below.
+            # Hashed entries (dict form) re-open the decision on drift.
+            for field in ('supersedes', 'exported_as', 'refines'):
+                raw_list = card.get(field) or []
+                if isinstance(raw_list, (str, dict)):
+                    raw_list = [raw_list]
+                for entry in raw_list:
+                    p, stored = KnowledgebaseIndexer._split_manifest_path_entry(entry)
+                    if not p:
+                        continue
+                    abs_p = (kb_dir / p).resolve()
+                    absorbed_sources.add(abs_p)
+                    if stored and abs_p.is_file() and \
+                            not KnowledgebaseIndexer._content_hash_matches(abs_p, stored):
+                        return True
             # dir_summary cards use dir_hash, not source_hash; their source is
             # the directory itself ('..' relative to .kb/).  Skip them here.
             if card.get('kind') == 'dir_summary':
@@ -550,13 +610,21 @@ class KnowledgebaseIndexer:
                 return True  # source file deleted
             if source_path.is_dir():
                 continue  # safety guard — should not happen for non-dir_summary cards
-            try:
-                full_hash = 'sha256:' + hashlib.sha256(source_path.read_bytes()).hexdigest()
-            except OSError:
+            if not KnowledgebaseIndexer._content_hash_matches(source_path, stored_hash):
                 return True
-            # stored_hash may be a truncated prefix (e.g. 'sha256:5ca9f4a552e44df8').
-            # Compare only as many characters as were stored.
-            if not full_hash.startswith(stored_hash):
+
+        # Files the author evaluated and deliberately excluded from carding.
+        # While the recorded hash matches, the decision stands and the file is
+        # treated as tracked-and-unchanged; drift re-opens the decision.
+        excluded_paths: set = set()
+        for entry in (seg.get('excluded', []) or []):
+            p, stored = KnowledgebaseIndexer._split_manifest_path_entry(entry)
+            if not p:
+                continue
+            abs_p = (kb_dir / p).resolve()
+            excluded_paths.add(abs_p)
+            if stored and abs_p.is_file() and \
+                    not KnowledgebaseIndexer._content_hash_matches(abs_p, stored):
                 return True
 
         # Check for new source files that have no card yet.  Two filters keep
@@ -582,7 +650,9 @@ class KnowledgebaseIndexer:
                         continue
                     if candidate.suffix.lower() not in tracked_exts:
                         continue
-                    if candidate not in seen_sources:
+                    if (candidate not in seen_sources
+                            and candidate not in absorbed_sources
+                            and candidate not in excluded_paths):
                         return True
             except OSError:
                 pass
@@ -651,13 +721,79 @@ class KnowledgebaseIndexer:
 
         return stale, current_count
 
-    def run_update(self, config: Dict[str, Any]) -> None:
+    @staticmethod
+    def _is_budget_exhausted(output: str) -> bool:
+        """True if claude CLI output indicates a hard spend/usage limit."""
+        return bool(re.search(r'(spend|usage)\s+limit', output, re.IGNORECASE))
+
+    @staticmethod
+    def _kb_commit_enabled(source_dir: Path) -> bool:
+        """Return the nearest-ancestor kb.yml `update_commit` setting (default True)."""
+        current = source_dir
+        while True:
+            kb_yml = current / '.kb' / 'kb.yml'
+            if kb_yml.exists():
+                try:
+                    import yaml as _yaml
+                    kb = _yaml.safe_load(kb_yml.read_text(encoding='utf-8')) or {}
+                    return bool(kb.get('update_commit', True))
+                except Exception:
+                    return True
+            parent = current.parent
+            if parent == current:
+                return True
+            current = parent
+
+    @staticmethod
+    def _commit_kb_updates(directory: str) -> None:
+        """Commit refreshed `.kb/` card state in a git work tree — nothing else.
+
+        Stages and commits only paths under `<directory>/.kb` using an explicit
+        pathspec with `git commit --only`, so changes staged elsewhere in the
+        repository are neither committed nor disturbed.  `-s` adds the
+        Signed-off-by trailer from the repository's git identity.  No-op when
+        the directory is outside a work tree, `update_commit: false` is set in
+        the nearest kb.yml, or `.kb/` is clean.
+        """
+        def git(*args: str):
+            return subprocess.run(['git', '-C', directory, *args],
+                                  capture_output=True, text=True)
+
+        r = git('rev-parse', '--is-inside-work-tree')
+        if r.returncode != 0 or r.stdout.strip() != 'true':
+            return
+        if not KnowledgebaseIndexer._kb_commit_enabled(Path(directory)):
+            return
+        if not git('status', '--porcelain', '--', '.kb').stdout.strip():
+            return
+        r = git('add', '-A', '--', '.kb')
+        if r.returncode != 0:
+            print(f"Warning: git add .kb failed in {directory}: {r.stderr.strip()}",
+                  file=sys.stderr)
+            return
+        prefix = git('rev-parse', '--show-prefix').stdout.strip().rstrip('/') or '.'
+        msg = f"kb: refresh knowledge cards for {prefix} (kbi --update)"
+        r = git('commit', '--only', '-s', '-m', msg, '--', '.kb')
+        if r.returncode != 0:
+            print(f"Warning: git commit .kb failed in {directory}: "
+                  f"{(r.stderr or r.stdout).strip()}", file=sys.stderr)
+            return
+        sha = git('rev-parse', '--short', 'HEAD').stdout.strip()
+        print(f"--update: committed .kb refresh in {directory} ({sha})", flush=True)
+
+    def run_update(self, config: Dict[str, Any], no_commit: bool = False) -> None:
         """Refresh stale card sets before indexing.
 
         For every directory under the include paths that has a
         `.kb/segmentation.yml` with a `dir_fingerprint` field, recompute
         the fingerprint and invoke `claude -p /kb-card <dir>` when stale.
         Directories without a `segmentation.yml` are skipped entirely.
+
+        After each successful refresh the directory's `.kb/` changes are
+        committed if it lives in a git work tree (suppressed by `no_commit`
+        or `update_commit: false` in kb.yml).  The loop aborts early when
+        the Claude CLI reports a spend/usage limit or fails twice in a row —
+        the remaining directories stay stale and are picked up next run.
         """
         print("--update: scanning for managed directories …", flush=True)
         stale, current_count = self._scan_managed_directories(config)
@@ -672,13 +808,44 @@ class KnowledgebaseIndexer:
         if not stale:
             return
 
+        consecutive_failures = 0
+        refreshed = 0
         for i, d in enumerate(stale, 1):
             print(f"--update: [{i}/{len(stale)}] refreshing {d}", flush=True)
-            rc = subprocess.run(['claude', '-p', '/kb-card'], cwd=d).returncode
-            if rc != 0:
-                print(f"Warning: /kb-card returned {rc} for {d}", file=sys.stderr)
+            proc = subprocess.run(['claude', '-p', '/kb-card'], cwd=d,
+                                  capture_output=True, text=True)
+            if proc.stdout:
+                print(proc.stdout, end='' if proc.stdout.endswith('\n') else '\n',
+                      flush=True)
+            if proc.stderr:
+                print(proc.stderr, file=sys.stderr,
+                      end='' if proc.stderr.endswith('\n') else '\n')
 
-        print(f"--update: done ({len(stale)} director{'ies' if len(stale) != 1 else 'y'} refreshed)", flush=True)
+            if proc.returncode == 0:
+                refreshed += 1
+                consecutive_failures = 0
+                if not no_commit:
+                    self._commit_kb_updates(d)
+                continue
+
+            print(f"Warning: /kb-card returned {proc.returncode} for {d}",
+                  file=sys.stderr)
+            consecutive_failures += 1
+            budget = self._is_budget_exhausted((proc.stdout or '') + (proc.stderr or ''))
+            if budget or consecutive_failures >= 2:
+                reason = ('spend/usage limit reached' if budget
+                          else 'two consecutive failures')
+                remaining = stale[i:]
+                still = len(remaining) + 1
+                print(f"--update: aborting ({reason}); "
+                      f"{still} director{'ies' if still != 1 else 'y'} "
+                      f"still stale (picked up next run):", file=sys.stderr)
+                for r in [d] + remaining:
+                    print(f"  still stale: {r}", file=sys.stderr)
+                return
+
+        print(f"--update: done ({refreshed} of {len(stale)} "
+              f"director{'ies' if len(stale) != 1 else 'y'} refreshed)", flush=True)
 
     def _resolve_keyword_files(self, domain: Optional[str]) -> List[str]:
         """Return the keyword file paths that apply to `domain`.
@@ -1177,6 +1344,12 @@ Examples:
     )
 
     parser.add_argument(
+        '--no-commit',
+        action='store_true',
+        help='With --update: do not auto-commit refreshed .kb/ changes in git repositories'
+    )
+
+    parser.add_argument(
         '--sample-config',
         nargs='?', const='kbi.yml', default=None, metavar='PATH',
         help='Write a sample configuration file (default: kbi.yml) and exit'
@@ -1279,7 +1452,7 @@ output:
             generator.set_debug(args.debug)
 
             if args.update:
-                generator.run_update(config)
+                generator.run_update(config, no_commit=args.no_commit)
 
             output_path = generator.run()
         
