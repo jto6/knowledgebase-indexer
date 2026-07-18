@@ -34,17 +34,47 @@ chmod +x mmdir.py
 ### Basic Usage
 
 ```bash
-# Generate index with default settings
-python3 kbi.py
+# Generate an index from a config file (required positional argument)
+python3 kbi.py configs/myconfig.yml
 
 # Enable debug output
-python3 kbi.py --debug
-
-# Use specific configuration file
-python3 kbi.py --config myconfig.yml
+python3 kbi.py configs/myconfig.yml --debug
 
 # Specify output file
-python3 kbi.py --output my_index.mm
+python3 kbi.py configs/myconfig.yml --output my_index.mm
+```
+
+### Refreshing knowledge cards (`--update`)
+
+```bash
+# Refresh stale card sets before indexing: scans managed directories
+# (.kb/segmentation.yml), computes a per-directory content delta, and hands
+# it to `claude -p '/kb-card --delta <file>'` for each stale directory.
+# Successful refreshes in git repositories auto-commit only the .kb/ paths.
+python3 kbi.py configs/myconfig.yml --update
+
+# Same, without the .kb auto-commits
+python3 kbi.py configs/myconfig.yml --update --no-commit
+```
+
+See `docs/REFERENCE.md` §5.7 for the staleness rules and delta format, and
+`docs/UPDATE_TOKEN_EFFICIENCY.md` for the design rationale.
+
+### Helper subcommands
+
+```bash
+# Search exactly the files an index config covers (ripgrep, else grep)
+python3 kbi.py search configs/myconfig.yml "<regex>" -i
+
+# Canonical source_hash (sha256 of raw bytes) per file
+python3 kbi.py hash <file>...
+
+# Mechanically refresh a .kb/segmentation.yml manifest's derivable fields
+# (source_hash values, dir_hash, dir_fingerprint, updated)
+python3 kbi.py manifest-sync [<dir>]
+
+# Audit segmentation decisions made headlessly by --update runs
+python3 kbi.py decisions [<root>]
 ```
 
 ### Sample Files

@@ -119,6 +119,38 @@ You never redo settled decisions — locked boundaries persist; only genuinely
 changed content is re-reviewed. (See `REFERENCE.md` §4.4 for the reconcile
 outcomes.) Regenerate the catalog afterward (Part 2).
 
+### Or let the indexer drive the refresh (`kbi --update`)
+
+Instead of re-running `/kb-card` by hand per area, add `--update` to a
+catalog build and kbi refreshes every stale managed directory first:
+
+```bash
+cd ~/dev/kbi && ./kbi.py configs/catalog.yml --update
+```
+
+For each directory with a `.kb/segmentation.yml`, kbi does a cheap two-level
+staleness check (file stats, then content hashes — files you've merely
+touched or synced don't count), computes exactly what drifted, and hands
+that delta to `claude -p '/kb-card --delta …'`. The agent only works on the
+listed changes; unchanged sources are never re-read and settled decisions
+(recorded exclusions, supersessions) are never re-asked. In git
+repositories, each successful refresh is committed automatically —
+only the `.kb/` paths, with any headless judgment calls in the commit
+body (suppress with `--no-commit`, or `update_commit: false` in the area's
+`kb.yml`).
+
+Afterward, audit any decisions made without you:
+
+```bash
+./kbi.py decisions ~/          # newest first; ratify by editing the
+                               # manifest entry to decided: user
+```
+
+An interrupted run (usage limit, crash) is safe: the plan is checkpointed
+in `segmentation.yml` (`status: pending`), so the next `--update` resumes
+authoring where it stopped instead of re-analyzing. See `REFERENCE.md`
+§5.7–5.8 and `UPDATE_TOKEN_EFFICIENCY.md` for details.
+
 ## Part 2 — Building and using the catalog
 
 Catalog-side: run `kbi` separately; it reads the `.kb.md` cards read-only and

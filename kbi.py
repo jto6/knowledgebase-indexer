@@ -1797,8 +1797,17 @@ Examples:
   # Override the output path
   python kbi.py configs/Study25.yml --output my_index.mm
 
+  # Refresh stale card sets first (delta handoff to /kb-card), then index
+  python kbi.py configs/Study25.yml --update            # add --no-commit to
+                                                        # skip .kb auto-commits
+
   # Search just the indexed files (ripgrep, else grep)
   python kbi.py search configs/Study25.yml "a-core" -i
+
+  # Manifest helper verbs (used by /kb-card; see docs/REFERENCE.md §5.8)
+  python kbi.py hash <file>...          # canonical source_hash per file
+  python kbi.py manifest-sync [<dir>]   # refresh a manifest's derivable fields
+  python kbi.py decisions [<root>]      # audit auto-made segmentation decisions
 
   # Scaffold a starter config (writes kbi.yml and exits; no config needed)
   python kbi.py --sample-config

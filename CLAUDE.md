@@ -60,17 +60,24 @@ The system follows a modular design with clear separation of concerns:
 ## Common Commands
 
 ```bash
-# Generate index with default settings
-python3 kbi.py
+# Generate an index (config is a required positional argument)
+python3 kbi.py configs/myconfig.yml
 
 # Enable debug output
-python3 kbi.py --debug
-
-# Use specific configuration
-python3 kbi.py --config myconfig.yml
+python3 kbi.py configs/myconfig.yml --debug
 
 # Specify output file
-python3 kbi.py --output my_index.mm
+python3 kbi.py configs/myconfig.yml --output my_index.mm
+
+# Refresh stale card sets first (delta handoff to /kb-card; auto-commits
+# .kb/ changes in git repos — suppress with --no-commit)
+python3 kbi.py configs/myconfig.yml --update
+
+# Helper subcommands (see docs/REFERENCE.md §5.6–5.8)
+python3 kbi.py search configs/myconfig.yml "<regex>" -i
+python3 kbi.py hash <file>...          # canonical source_hash per file
+python3 kbi.py manifest-sync [<dir>]   # refresh manifest hashes/fingerprint
+python3 kbi.py decisions [<root>]      # audit auto-made segmentation decisions
 
 # Generate sample files
 python3 kbi.py --sample-config

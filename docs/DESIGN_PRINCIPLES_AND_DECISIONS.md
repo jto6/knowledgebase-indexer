@@ -304,6 +304,38 @@ Each decision records the choice and why; supersessions are noted in the addenda
   for every multi-card file by default — risks redundant TOC-style cards that
   add nothing the topic cards don't already say. (P6, P9, D2, D12, D14)
 
+- **D22 — Segmentation decisions are durable manifest state, keyed to content
+  hashes; a decision re-opens exactly when its input changes.** The manifest
+  records not just positive outcomes (cards) but *negative and relational*
+  ones: `excluded:` entries (evaluated, deliberately not carded — including
+  silent exclusions) and hashed `supersedes`/`exported_as` entries, each
+  carrying the decided file's `source_hash` plus `decided: user|auto` and
+  `decided_on`. While the hash matches, the decision is **settled** — never
+  re-read, re-compared, or re-asked; when the bytes drift, the file
+  re-surfaces as new and only that decision is re-decided; deletion prunes
+  the entry with nothing to re-ask. Headless (`auto`) decisions are
+  auditable via `kbi decisions`, the run report's `Decisions made` section,
+  and the auto-commit body; ratifying flips them to `user`. Motivated by the
+  2026-07-17 `--update` run, which re-litigated the same supersession and
+  exclusion questions on every pass (see `UPDATE_TOKEN_EFFICIENCY.md`).
+  (P6; PRD R-UPD-STALE-002..004, R-UPD-HELP-003)
+
+- **D23 — Deterministic work never spends tokens: kbi computes, the agent
+  consumes.** Everything derivable by code is owned by code — staleness
+  detection (two-level: stat fingerprint, then content hashes), the
+  per-directory content delta handed to `/kb-card --delta` (changed / new /
+  deleted / reopened / pending, with best-effort ≤200-line diffs when git
+  HEAD matches the recorded hash), canonical hashing (`kbi hash`, always raw
+  bytes), manifest bookkeeping (`kbi manifest-sync`, sole owner of the
+  `dir_hash` formula), and the pathspec-confined `.kb/` auto-commit. The
+  agent's context scales with the size of the change, never the size of the
+  directory; interrupted runs resume from the `status: pending` checkpoint
+  instead of re-deriving analysis. Considered and rejected: having the agent
+  re-derive the delta each run (the pre-2026-07 behavior — burned a full
+  analysis per directory even when nothing changed) and hand-computed hash
+  serializations (produced divergent `dir_hash` formulas across manifests).
+  (P5, P6; PRD §6 R-UPD-*)
+
 ## 5. Card Schema (current)
 
 Frontmatter:

@@ -418,6 +418,8 @@ cards:
     supersedes:                        # absorbed near-duplicate/earlier version
       - path: ../reports/foo_v1.pdf   #   dict form: hash re-opens the decision
         source_hash: sha256:1c9e22b0...
+        decided: user                 #   user (review gate) | auto (headless)
+        decided_on: 2026-07-18
     scope:
       section: "Architecture"
       signature: "VMkernel, VMFS, cluster file system"
@@ -435,7 +437,12 @@ excluded:                            # evaluated, deliberately not carded
   - path: ../reports/Delme.md
     reason: disposable-by-name
     source_hash: sha256:44d0be71...  # decision stands while this matches
+    decided: auto                    # audit with `kbi decisions` (§5.8)
+    decided_on: 2026-07-18
 ```
+
+(A card entry may transiently carry `status: pending` — the checkpoint
+marker for a written plan whose body is not yet authored; see §3.2.)
 
 ## 4. The `/kb-card` Command (author-side)
 
@@ -447,6 +454,7 @@ manual review. It does **not** run `kbi`.
 
 ```
 /kb-card [source] [-r] [-plan] [-resegment] [-update]
+         [--delta <file>]
          [-density coarse|normal|fine|exhaustive] [-cards <N>]
          [-file-summary | -no-file-summary]
          [-domain <d>] [-level 1|2|3] [-quotes | -no-quotes]
@@ -460,6 +468,12 @@ manual review. It does **not** run `kbi`.
   the review/adjustment gate.
 - `-resegment` — discard a source's existing boundaries and re-propose fresh.
 - `-update` — refresh content of existing cards whose source drifted.
+- `--delta <file>` — **delta mode**, how `kbi --update` invokes the command
+  (§5.7). The file is an authoritative content delta; the run is strictly
+  scoped to what it lists (no re-hashing or re-reading of unchanged
+  sources), runs headless (judgment calls applied and recorded as
+  `decided: auto`), and resumes any `pending` entries. See kb-card.md
+  "Delta mode" for the full contract.
 - `-density` — depth of the split (overrides `kb.yml card_density`).
 - `-cards <N>` — a **maximum** card count (a ceiling, **never a quota**):
   partitioning stops at the finest meaningful boundary and never invents or
@@ -494,17 +508,23 @@ All three are *optional overrides* of the adaptive proposal; omit them to let
 1. Resolve scope + area config (`kb.yml`) and the effective profile/density. On
    first run, auto-create `.kb/` and bootstrap a default `kb.yml` if none is found.
 2. **Segment:** propose boundaries (adaptive, honoring overrides), reconcile
-   against `segmentation.yml`, present the delta for review, write
-   `segmentation.yml`. (`-plan` stops here.)
+   against `segmentation.yml`, present the delta for review, record every
+   deliberate non-carding decision in `excluded:` (with `decided:`/
+   `decided_on:`, §3.1), then **checkpoint**: write `segmentation.yml` with
+   `status: pending` on entries whose bodies are not yet authored. (`-plan`
+   stops here.)
 3. **Author/refresh:** distill each new/refreshed/re-segmented scope per the
    profile; reconcile tags; extract `meta`; assemble frontmatter; linkify known
-   terms; write the card.
+   terms; write the card; clear the entry's `status: pending`.
 3b. **Dir-summary:** after all per-source cards are written for a directory, if
-    `dir_summary` is `on` and the directory has ≥2 distinct sources, compute
-    `dir_hash = sha256(sorted source_hash values)`. If the existing dir_summary card
-    entry records a matching `dir_hash`, skip. Otherwise author or refresh the
-    dir_summary card.
-4. Retire orphans; report. (Does not run `kbi`.)
+    `dir_summary` is `on` and the directory has ≥2 distinct sources, refresh
+    the dir_summary card when the directory's collective content moved —
+    signaled by `kbi manifest-sync` reporting `dir_hash: changed` (§3.2,
+    §5.8); skip when unchanged.
+4. Retire orphans; prune `excluded`/absorbed entries for deleted files; run
+   `kbi manifest-sync` to finalize hashes/fingerprint; report, including a
+   `Decisions made` section for newly recorded decisions. (Does not run
+   `kbi`.)
 
 ### 4.4 Reconcile outcomes
 
@@ -518,6 +538,20 @@ On re-run, each existing card is classified:
   lock and escalate that source to review.
 - **orphan** — the source is gone → retire the card.
 - **new** — an uncarded section/source appeared → propose a new card.
+
+Beyond the cards themselves:
+
+- **settled** — a file covered by a hash-matching `excluded:` or hashed
+  `supersedes`/`exported_as` entry → skipped entirely: no reads, no
+  re-evaluation, not re-flagged at review.
+- **reopened** — an excluded/absorbed file whose recorded hash drifted → the
+  file re-surfaces as **new** and the recorded decision is re-decided (the
+  only time a settled decision is re-asked).
+- **pruned** — an excluded/absorbed file deleted from disk → its entry (and
+  any `refines:` pointer to it) is removed; nothing to re-decide.
+- **resume** — an entry still marked `status: pending` with a matching
+  `source_hash` → its plan and decisions are settled; authoring continues
+  directly without re-running segmentation.
 
 ## 5. The `kbi` Indexer and Catalog Config (catalog-side)
 
@@ -745,7 +779,9 @@ git work tree, kbi commits that directory's `.kb/` changes — and nothing else
 (`git add -A -- .kb` + `git commit --only -- .kb`, so changes staged elsewhere
 in the repository are neither committed nor disturbed). The message is
 `kb: refresh knowledge cards for <repo-relative-dir> (kbi --update)` with a
-`Signed-off-by` trailer from the repository's git identity (`git commit -s`).
+`Signed-off-by` trailer from the repository's git identity (`git commit -s`);
+when the run's report contains a `Decisions made` section, it is embedded in
+the commit body, making `git log` a durable journal of headless decisions.
 Nothing is ever pushed. Opt out per run with `--no-commit`, or per area with
 `update_commit: false` in the nearest `.kb/kb.yml`.
 
