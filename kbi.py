@@ -529,41 +529,87 @@ class KnowledgebaseIndexer:
         return p, stored
 
     @staticmethod
-    def _dir_content_changed(seg: Dict[str, Any], kb_dir: Path) -> bool:
-        """Return True if any source file referenced in segmentation.yml has changed content.
+    def _file_hash(path: Path) -> str:
+        """Canonical KB content hash: 'sha256:<hex>' of raw bytes; '' if unreadable."""
+        try:
+            return 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            return ''
 
-        Compares each card's stored `source_hash` against a freshly computed
-        SHA-256 of that file's bytes.  Files that have been added or removed
-        also count as changed.  Pure-URL sources and dir_summary cards (whose
-        source is the directory itself, tracked via `dir_hash` not `source_hash`)
-        are skipped.  Files absorbed into a card via `supersedes` /
-        `exported_as` / `refines` are treated as tracked: their presence on
-        disk does not count as a new source.  When an absorbed entry records
-        a `source_hash` (dict form: {path, source_hash}), content drift
-        re-opens the decision — the directory is stale; bare-string entries
-        track no hash.  Files listed in the top-level `excluded:` section
-        are likewise treated as tracked-and-unchanged while their recorded
-        hash matches; drift makes the directory stale so the exclusion can
-        be re-decided.  Deleting an absorbed or excluded file is not
-        staleness — its entry is simply pruned at the next reconcile.
+    @staticmethod
+    def _manifest_card_source_path(card: Dict[str, Any], kb_dir: Path) -> Optional[Path]:
+        """Resolve a manifest card entry's `source` to an absolute local path.
 
-        This is a content-level check that avoids false positives from mtime
-        changes (git checkout, sync, touch) that trick the mtime-based
-        dir_fingerprint into reporting stale when nothing actually changed.
+        Returns None for pure-URL sources and empty values.  A list source
+        (URL + local capture) resolves to its first non-URL entry.  Markdown
+        link syntax is parsed transparently.
+        """
+        raw_source = card.get('source', '')
+        if not raw_source:
+            return None
+        if isinstance(raw_source, list):
+            local = next(
+                (s for s in raw_source if not str(s).startswith('http')),
+                None,
+            )
+            if local is None:
+                return None
+            raw_source = str(local)
+        path_str = KnowledgebaseIndexer._parse_md_link_path(str(raw_source).strip())
+        if path_str.startswith('http'):
+            return None
+        return (kb_dir / path_str).resolve()
+
+    @staticmethod
+    def _dir_content_delta(seg: Dict[str, Any], kb_dir: Path) -> Dict[str, Any]:
+        """Compute the content delta between segmentation.yml and the directory.
+
+        Returns a dict describing exactly what drifted — this is the payload
+        of the --update delta handoff, so /kb-card consumes it instead of
+        re-deriving it:
+
+          bootstrap  — True when no cards are recorded yet (first run)
+          changed    — [{path, old_hash, new_hash, cards}] tracked sources
+                       whose bytes no longer match their recorded hash
+          new        — [path] untracked files with a tracked extension that
+                       pass the source_exclude filters
+          deleted    — [{path, cards}] tracked sources gone from disk
+          reopened   — [{path, decision, old_hash, new_hash}] absorbed
+                       (supersedes/exported_as/refines) or excluded files
+                       whose recorded hash no longer matches — the recorded
+                       decision needs re-deciding
+          unchanged  — count of tracked sources whose hash still matches
+
+        Paths are relative to the source directory (kb_dir's parent).
+        Pure-URL sources and dir_summary cards are skipped; a card without a
+        source_hash is tracked-but-uncomparable (counted unchanged).  A
+        deleted absorbed/excluded file is not drift — its entry is pruned at
+        the next reconcile.
         """
         source_dir = kb_dir.parent
+        delta: Dict[str, Any] = {'bootstrap': False, 'changed': [], 'new': [],
+                                 'deleted': [], 'reopened': [], 'unchanged': 0}
         cards = seg.get('cards', []) or []
         if not cards:
-            # No cards recorded yet — treat as changed so /kb-card can initialise
-            return True
+            delta['bootstrap'] = True
+            return delta
 
-        seen_sources: set = set()
-        absorbed_sources: set = set()
+        def rel(p: Path) -> str:
+            try:
+                return os.path.relpath(str(p), str(source_dir))
+            except ValueError:
+                return str(p)
+
+        # abs source path -> {'stored': hash-or-'', 'cards': [slugs]}
+        tracked: Dict[Path, Dict[str, Any]] = {}
+        # abs absorbed path -> {'stored': hash-or-'', 'decision': str}
+        # Files absorbed into a card (supersedes / exported_as / refines) are
+        # deliberately not carded separately; their presence on disk must not
+        # look like a new untracked source.  Hashed entries (dict form)
+        # re-open the decision on drift.
+        absorbed: Dict[Path, Dict[str, str]] = {}
         for card in cards:
-            # Files absorbed into a card (supersedes / exported_as / refines)
-            # are deliberately not carded separately; their presence on disk
-            # must not look like a new untracked source in the scan below.
-            # Hashed entries (dict form) re-open the decision on drift.
+            slug = str(card.get('slug', '') or '')
             for field in ('supersedes', 'exported_as', 'refines'):
                 raw_list = card.get(field) or []
                 if isinstance(raw_list, (str, dict)):
@@ -573,45 +619,52 @@ class KnowledgebaseIndexer:
                     if not p:
                         continue
                     abs_p = (kb_dir / p).resolve()
-                    absorbed_sources.add(abs_p)
-                    if stored and abs_p.is_file() and \
-                            not KnowledgebaseIndexer._content_hash_matches(abs_p, stored):
-                        return True
+                    if abs_p not in absorbed or stored:
+                        absorbed[abs_p] = {'stored': stored,
+                                           'decision': f"{field} of card '{slug}'"}
             # dir_summary cards use dir_hash, not source_hash; their source is
             # the directory itself ('..' relative to .kb/).  Skip them here.
             if card.get('kind') == 'dir_summary':
                 continue
-            # Also skip any card without a source_hash (no content to compare)
-            stored_hash = card.get('source_hash', '')
-            if not stored_hash:
+            source_path = KnowledgebaseIndexer._manifest_card_source_path(card, kb_dir)
+            if source_path is None:
                 continue
+            rec = tracked.setdefault(source_path, {'stored': '', 'cards': []})
+            if slug:
+                rec['cards'].append(slug)
+            if not rec['stored']:
+                rec['stored'] = str(card.get('source_hash', '') or '')
 
-            raw_source = card.get('source', '')
-            if not raw_source:
-                continue
-            # Resolve a list source (URL + local path) to the local path entry
-            if isinstance(raw_source, list):
-                local = next(
-                    (s for s in raw_source if not str(s).startswith('http')),
-                    None,
-                )
-                if local is None:
-                    continue
-                raw_source = str(local)
-            path_str = KnowledgebaseIndexer._parse_md_link_path(str(raw_source).strip())
-            if path_str.startswith('http'):
-                continue
-            source_path = (kb_dir / path_str).resolve()
-            if source_path in seen_sources:
-                continue
-            seen_sources.add(source_path)
-
+        for source_path in sorted(tracked):
+            rec = tracked[source_path]
             if not source_path.exists():
-                return True  # source file deleted
+                delta['deleted'].append({'path': rel(source_path),
+                                         'cards': rec['cards']})
+                continue
             if source_path.is_dir():
                 continue  # safety guard — should not happen for non-dir_summary cards
-            if not KnowledgebaseIndexer._content_hash_matches(source_path, stored_hash):
-                return True
+            if not rec['stored']:
+                delta['unchanged'] += 1  # no hash recorded — nothing to compare
+                continue
+            full = KnowledgebaseIndexer._file_hash(source_path)
+            if full and full.startswith(rec['stored']):
+                delta['unchanged'] += 1
+            else:
+                delta['changed'].append({'path': rel(source_path),
+                                         'old_hash': rec['stored'],
+                                         'new_hash': full,
+                                         'cards': rec['cards']})
+
+        # Hashed absorbed entries: drift re-opens the supersession decision.
+        for abs_p in sorted(absorbed):
+            rec_a = absorbed[abs_p]
+            if rec_a['stored'] and abs_p.is_file():
+                full = KnowledgebaseIndexer._file_hash(abs_p)
+                if not (full and full.startswith(rec_a['stored'])):
+                    delta['reopened'].append({'path': rel(abs_p),
+                                              'decision': rec_a['decision'],
+                                              'old_hash': rec_a['stored'],
+                                              'new_hash': full})
 
         # Files the author evaluated and deliberately excluded from carding.
         # While the recorded hash matches, the decision stands and the file is
@@ -623,9 +676,15 @@ class KnowledgebaseIndexer:
                 continue
             abs_p = (kb_dir / p).resolve()
             excluded_paths.add(abs_p)
-            if stored and abs_p.is_file() and \
-                    not KnowledgebaseIndexer._content_hash_matches(abs_p, stored):
-                return True
+            reason = str(entry.get('reason', '') or '') if isinstance(entry, dict) else ''
+            if stored and abs_p.is_file():
+                full = KnowledgebaseIndexer._file_hash(abs_p)
+                if not (full and full.startswith(stored)):
+                    delta['reopened'].append({
+                        'path': rel(abs_p),
+                        'decision': f"excluded ({reason})" if reason else 'excluded',
+                        'old_hash': stored,
+                        'new_hash': full})
 
         # Check for new source files that have no card yet.  Two filters keep
         # noise out:
@@ -636,7 +695,7 @@ class KnowledgebaseIndexer:
         #      .pdf/.html/.log/.csv etc. from directories that only track .mm
         #      or .md sources.  Users add same-extension exclusions (e.g.
         #      CLAUDE.md) via kb.yml source_exclude.
-        tracked_exts = {p.suffix.lower() for p in seen_sources if p.suffix}
+        tracked_exts = {p.suffix.lower() for p in tracked if p.suffix}
         if tracked_exts:
             exclude_patterns = KnowledgebaseIndexer._load_source_exclude(source_dir)
             try:
@@ -650,23 +709,44 @@ class KnowledgebaseIndexer:
                         continue
                     if candidate.suffix.lower() not in tracked_exts:
                         continue
-                    if (candidate not in seen_sources
-                            and candidate not in absorbed_sources
+                    if (candidate not in tracked
+                            and candidate not in absorbed
                             and candidate not in excluded_paths):
-                        return True
+                        delta['new'].append(rel(candidate))
             except OSError:
                 pass
+        delta['new'].sort()
 
-        return False
+        return delta
+
+    @staticmethod
+    def _delta_has_drift(delta: Dict[str, Any]) -> bool:
+        """True if a _dir_content_delta result contains any drift."""
+        return bool(delta['bootstrap'] or delta['changed'] or delta['new']
+                    or delta['deleted'] or delta['reopened'])
+
+    @staticmethod
+    def _dir_content_changed(seg: Dict[str, Any], kb_dir: Path) -> bool:
+        """Return True if the directory's content drifted from segmentation.yml.
+
+        Thin wrapper over _dir_content_delta — see it for the drift rules.
+        This is a content-level check that avoids false positives from mtime
+        changes (git checkout, sync, touch) that trick the mtime-based
+        dir_fingerprint into reporting stale when nothing actually changed.
+        """
+        return KnowledgebaseIndexer._delta_has_drift(
+            KnowledgebaseIndexer._dir_content_delta(seg, kb_dir))
 
     def _scan_managed_directories(self, config: Dict[str, Any]) -> tuple:
         """Return (stale_dirs, current_count) for all managed directories.
 
         A managed directory is any directory with a `.kb/segmentation.yml`
         that contains a `dir_fingerprint` field.  Returns a 2-tuple:
-          stale_dirs   — list of absolute path strings whose fingerprint
-                         no longer matches the stored value
-          current_count — count of directories whose fingerprint matches
+          stale_dirs   — list of (abs_path_str, content_delta) tuples for
+                         directories with real content drift; the delta is
+                         the _dir_content_delta result, kept for the
+                         /kb-card --delta handoff
+          current_count — count of directories with no content drift
 
         Uses a two-level check:
           1. mtime-based dir_fingerprint (fast) — if unchanged, skip immediately.
@@ -713,11 +793,13 @@ class KnowledgebaseIndexer:
                     current_count += 1
                     continue
                 # dir_fingerprint changed — do a content-level check before
-                # paying the Claude invocation cost.
-                if not self._dir_content_changed(seg, seg_yml.parent):
+                # paying the Claude invocation cost.  Keep the computed delta
+                # for the /kb-card --delta handoff.
+                delta = self._dir_content_delta(seg, seg_yml.parent)
+                if not self._delta_has_drift(delta):
                     current_count += 1
                 else:
-                    stale.append(abs_dir)
+                    stale.append((abs_dir, delta))
 
         return stale, current_count
 
@@ -781,6 +863,135 @@ class KnowledgebaseIndexer:
         sha = git('rev-parse', '--short', 'HEAD').stdout.strip()
         print(f"--update: committed .kb refresh in {directory} ({sha})", flush=True)
 
+    # Diffs above this size are omitted from the delta file — the agent reads
+    # the source instead (a huge diff is no cheaper than the file itself).
+    _DIFF_MAX_LINES = 200
+
+    # Converter used to diff .mm sources at the markdown level (raw .mm XML
+    # diffs are noise).  Same converter /kb-card uses for distillation.
+    _MM2MD = Path.home() / 'dev/utility-scripts/freeplane/mm2md.py'
+
+    @staticmethod
+    def _mm_pair_to_md(old_bytes: bytes, new_bytes: bytes) -> Optional[tuple]:
+        """Convert two .mm revisions to markdown for diffing; None if unavailable."""
+        import tempfile
+        conv = KnowledgebaseIndexer._MM2MD
+        if not conv.is_file():
+            return None
+        texts = []
+        for data in (old_bytes, new_bytes):
+            src_path = out_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix='.mm', delete=False) as src:
+                    src.write(data)
+                    src_path = src.name
+                out_path = src_path + '.md'
+                r = subprocess.run(['python3', str(conv), src_path, out_path],
+                                   capture_output=True, text=True, timeout=60)
+                if r.returncode != 0:
+                    return None
+                texts.append(Path(out_path).read_text(encoding='utf-8'))
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            finally:
+                for p in (src_path, out_path):
+                    if p:
+                        try:
+                            os.unlink(p)
+                        except OSError:
+                            pass
+        return texts[0], texts[1]
+
+    @staticmethod
+    def _source_diff(directory: str, rel_path: str, old_hash: str) -> Optional[str]:
+        """Best-effort unified diff of a changed source against its carded state.
+
+        The previous content is only recoverable when the directory is in a
+        git work tree and the HEAD version of the file matches the recorded
+        hash (guaranteed right after a --update auto-commit).  .mm sources
+        are diffed via their mm2md conversion when the converter is
+        available.  Returns None for binary content, oversized diffs
+        (> _DIFF_MAX_LINES lines), or an unrecoverable old version — the
+        agent then reads the source itself.
+        """
+        import difflib
+        r = subprocess.run(['git', '-C', directory, 'show', f'HEAD:./{rel_path}'],
+                           capture_output=True)
+        if r.returncode != 0:
+            return None
+        old_bytes = r.stdout
+        if old_hash and not ('sha256:' + hashlib.sha256(old_bytes).hexdigest()
+                             ).startswith(old_hash):
+            return None  # HEAD is not the carded version — diff base untrusted
+        cur_path = Path(directory) / rel_path
+        try:
+            new_bytes = cur_path.read_bytes()
+        except OSError:
+            return None
+        label = rel_path
+        if cur_path.suffix.lower() == '.mm':
+            conv = KnowledgebaseIndexer._mm_pair_to_md(old_bytes, new_bytes)
+            if conv is None:
+                return None
+            old_text, new_text = conv
+            label = rel_path + ' (mm2md conversion)'
+        else:
+            try:
+                old_text = old_bytes.decode('utf-8')
+                new_text = new_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                return None
+        lines = list(difflib.unified_diff(
+            old_text.splitlines(keepends=True), new_text.splitlines(keepends=True),
+            fromfile=f'a/{label}', tofile=f'b/{label}', n=3))
+        if not lines or len(lines) > KnowledgebaseIndexer._DIFF_MAX_LINES:
+            return None
+        return ''.join(lines)
+
+    def _write_delta_file(self, root: Path, directory: str,
+                          delta: Dict[str, Any]) -> Optional[str]:
+        """Write the per-directory content delta for the /kb-card handoff.
+
+        Adds a best-effort unified diff to each changed entry when the
+        previous content is recoverable (see _source_diff).  Returns the
+        delta file path, or None when it could not be written (the agent
+        then falls back to re-deriving the delta itself).
+        """
+        try:
+            import yaml as _yaml
+        except ImportError:
+            return None
+        from datetime import datetime
+        doc = {
+            'directory': directory,
+            'generated': datetime.now().isoformat(timespec='seconds'),
+            'scope': 'non-recursive',
+            'note': ('Authoritative content delta from kbi --update. Hashes are '
+                     'sha256 of raw file bytes. Do not re-hash, re-read, or touch '
+                     'sources counted in `unchanged`.'),
+            'bootstrap': delta['bootstrap'],
+            'unchanged': delta['unchanged'],
+            'changed': [dict(e) for e in delta['changed']],
+            'new': list(delta['new']),
+            'deleted': [dict(e) for e in delta['deleted']],
+            'reopened': [dict(e) for e in delta['reopened']],
+        }
+        for entry in doc['changed']:
+            diff = self._source_diff(directory, entry['path'], entry['old_hash'])
+            if diff:
+                entry['diff'] = diff
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            slug = re.sub(r'[^A-Za-z0-9._-]+', '-', directory).strip('-')
+            digest = hashlib.sha256(directory.encode()).hexdigest()[:8]
+            path = root / f"{slug}-{digest}.delta.yml"
+            with open(path, 'w', encoding='utf-8') as fh:
+                fh.write('# kbi --update content delta — consumed by /kb-card --delta\n')
+                _yaml.safe_dump(doc, fh, sort_keys=False, allow_unicode=True, width=100)
+            return str(path)
+        except OSError:
+            return None
+
     def run_update(self, config: Dict[str, Any], no_commit: bool = False) -> None:
         """Refresh stale card sets before indexing.
 
@@ -795,10 +1006,12 @@ class KnowledgebaseIndexer:
         the Claude CLI reports a spend/usage limit or fails twice in a row —
         the remaining directories stay stale and are picked up next run.
         """
+        import tempfile
+
         print("--update: scanning for managed directories …", flush=True)
         stale, current_count = self._scan_managed_directories(config)
 
-        for d in stale:
+        for d, _delta in stale:
             print(f"  stale: {d}", flush=True)
 
         total = len(stale) + current_count
@@ -808,11 +1021,15 @@ class KnowledgebaseIndexer:
         if not stale:
             return
 
+        delta_root = Path(tempfile.gettempdir()) / 'kbi-update'
         consecutive_failures = 0
         refreshed = 0
-        for i, d in enumerate(stale, 1):
+        for i, (d, delta) in enumerate(stale, 1):
             print(f"--update: [{i}/{len(stale)}] refreshing {d}", flush=True)
-            proc = subprocess.run(['claude', '-p', '/kb-card'], cwd=d,
+            delta_file = self._write_delta_file(delta_root, d, delta)
+            prompt = ('/kb-card' if delta_file is None
+                      else f'/kb-card --delta {delta_file}')
+            proc = subprocess.run(['claude', '-p', prompt], cwd=d,
                                   capture_output=True, text=True)
             if proc.stdout:
                 print(proc.stdout, end='' if proc.stdout.endswith('\n') else '\n',
@@ -835,7 +1052,7 @@ class KnowledgebaseIndexer:
             if budget or consecutive_failures >= 2:
                 reason = ('spend/usage limit reached' if budget
                           else 'two consecutive failures')
-                remaining = stale[i:]
+                remaining = [t[0] for t in stale[i:]]
                 still = len(remaining) + 1
                 print(f"--update: aborting ({reason}); "
                       f"{still} director{'ies' if still != 1 else 'y'} "
@@ -1283,11 +1500,172 @@ Extra arguments after PATTERN are passed through to the backend (rg, else grep):
     return 2 if error else (0 if found else 1)
 
 
+def run_hash(argv: List[str]) -> int:
+    """`kbi hash <file>...` — print the canonical KB content hash per file.
+
+    One line per file: `sha256:<hex>  <path>` (sha256 of raw bytes — the
+    exact value recorded as `source_hash` in segmentation.yml).  /kb-card
+    shells out to this instead of hand-computing hashes, so there is a
+    single authority for which bytes get hashed (always the raw file, never
+    a converted form).
+    """
+    parser = argparse.ArgumentParser(
+        prog='kbi hash',
+        description='Print the canonical KB source hash (sha256 of raw bytes) per file.')
+    parser.add_argument('files', nargs='+', help='Files to hash')
+    args = parser.parse_args(argv)
+
+    rc = 0
+    for f in args.files:
+        digest = KnowledgebaseIndexer._file_hash(Path(f))
+        if not digest:
+            print(f"Error: cannot read {f}", file=sys.stderr)
+            rc = 2
+            continue
+        print(f"{digest}  {f}")
+    return rc
+
+
+def _compute_dir_hash(source_hashes: List[str]) -> str:
+    """Canonical dir_hash: sha256 of the sorted unique source_hash strings, newline-joined."""
+    blob = '\n'.join(sorted(set(h for h in source_hashes if h)))
+    return 'sha256:' + hashlib.sha256(blob.encode()).hexdigest()
+
+
+def run_manifest_sync(argv: List[str]) -> int:
+    """`kbi manifest-sync [<dir>]` — mechanically refresh segmentation.yml hashes.
+
+    Recomputes, from current on-disk bytes, everything in the manifest that
+    is derivable: every card's `source_hash` (local file sources), hashed
+    `supersedes`/`exported_as`/`refines` and `excluded` entries (dict form
+    only — bare strings stay untracked), `dir_hash` on dir_summary entries
+    (canonical formula: sha256 of the sorted unique source_hash values,
+    newline-joined), `dir_fingerprint`, and the top-level `updated` date.
+
+    This RATIFIES current content as the decided state — /kb-card runs it as
+    the last step of a successful pass, never to silence unreviewed drift.
+    YAML comments and formatting are normalized on rewrite.  The report on
+    stdout says what changed; `dir_hash: changed` means the directory's
+    collective content moved and the dir_summary card body should have been
+    refreshed in the same pass.
+    """
+    try:
+        import yaml as _yaml
+    except ImportError:
+        print('Error: PyYAML not available', file=sys.stderr)
+        return 2
+    from datetime import date
+
+    parser = argparse.ArgumentParser(
+        prog='kbi manifest-sync',
+        description='Recompute segmentation.yml hashes/fingerprint from current file bytes.')
+    parser.add_argument('directory', nargs='?', default='.',
+                        help='Managed directory (default: current directory)')
+    args = parser.parse_args(argv)
+
+    source_dir = Path(args.directory).resolve()
+    seg_path = source_dir / '.kb' / 'segmentation.yml'
+    if not seg_path.is_file():
+        print(f"Error: no manifest at {seg_path}", file=sys.stderr)
+        return 2
+    try:
+        seg = _yaml.safe_load(seg_path.read_text(encoding='utf-8')) or {}
+    except Exception as e:
+        print(f"Error: cannot parse {seg_path}: {e}", file=sys.stderr)
+        return 2
+    kb_dir = seg_path.parent
+
+    K = KnowledgebaseIndexer
+    stats = {'source_hash': 0, 'absorbed': 0, 'excluded': 0}
+    warnings: List[str] = []
+
+    def refresh_entry_hash(entry: Any, counter: str) -> None:
+        """Refresh the hash of a dict-form path entry in place (if its file exists)."""
+        if not isinstance(entry, dict):
+            return  # bare string — no hash tracked, never upgraded silently
+        p, stored = K._split_manifest_path_entry(entry)
+        if not p or not stored:
+            return
+        abs_p = (kb_dir / p).resolve()
+        if not abs_p.is_file():
+            warnings.append(f"missing file (entry kept): {p}")
+            return
+        full = K._file_hash(abs_p)
+        if full and full != entry.get('source_hash'):
+            entry['source_hash'] = full
+            stats[counter] += 1
+
+    source_hashes: List[str] = []
+    dir_summaries: List[Dict[str, Any]] = []
+    for card in (seg.get('cards') or []):
+        for field in ('supersedes', 'exported_as', 'refines'):
+            raw_list = card.get(field)
+            if isinstance(raw_list, list):
+                for entry in raw_list:
+                    refresh_entry_hash(entry, 'absorbed')
+        if card.get('kind') == 'dir_summary':
+            dir_summaries.append(card)
+            continue
+        source_path = K._manifest_card_source_path(card, kb_dir)
+        if source_path is None:
+            continue
+        if not source_path.is_file():
+            warnings.append(f"missing source (card kept): {card.get('slug', '?')}")
+            continue
+        full = K._file_hash(source_path)
+        if not full:
+            warnings.append(f"unreadable source: {card.get('slug', '?')}")
+            continue
+        source_hashes.append(full)
+        if full != card.get('source_hash'):
+            card['source_hash'] = full
+            stats['source_hash'] += 1
+
+    for entry in (seg.get('excluded') or []):
+        refresh_entry_hash(entry, 'excluded')
+
+    dir_hash_changed = False
+    if dir_summaries and source_hashes:
+        new_dir_hash = _compute_dir_hash(source_hashes)
+        for card in dir_summaries:
+            if card.get('dir_hash') != new_dir_hash:
+                card['dir_hash'] = new_dir_hash
+                dir_hash_changed = True
+
+    old_fp = seg.get('dir_fingerprint', '')
+    new_fp = K._compute_dir_fingerprint(str(source_dir))
+    seg['dir_fingerprint'] = new_fp
+    seg['updated'] = date.today()
+
+    try:
+        with open(seg_path, 'w', encoding='utf-8') as fh:
+            fh.write('# .kb/segmentation.yml — reviewed segmentation manifest '
+                     'for this directory.\n')
+            _yaml.safe_dump(seg, fh, sort_keys=False, allow_unicode=True, width=100)
+    except OSError as e:
+        print(f"Error: cannot write {seg_path}: {e}", file=sys.stderr)
+        return 2
+
+    print(f"manifest-sync: {seg_path}")
+    print(f"  source_hash updated: {stats['source_hash']}")
+    print(f"  absorbed entries updated: {stats['absorbed']}")
+    print(f"  excluded entries updated: {stats['excluded']}")
+    print(f"  dir_hash: {'changed' if dir_hash_changed else 'unchanged'}")
+    print(f"  dir_fingerprint: {'refreshed' if new_fp != old_fp else 'unchanged'}")
+    for w in warnings:
+        print(f"  warning: {w}")
+    return 0
+
+
 def main():
     """Main entry point."""
     argv = sys.argv[1:]
     if argv and argv[0] == 'search':
         return run_search(argv[1:])
+    if argv and argv[0] == 'hash':
+        return run_hash(argv[1:])
+    if argv and argv[0] == 'manifest-sync':
+        return run_manifest_sync(argv[1:])
 
     parser = argparse.ArgumentParser(
         description="Generate navigational knowledge indexes for structured file collections (Freeplane .mm by default)",

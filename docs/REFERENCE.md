@@ -373,10 +373,15 @@ it is *not* an index of cards (that is the cards themselves, plus
   absorbed file re-opens the decision (`kbi --update` marks the directory
   stale and `/kb-card` re-surfaces the file as new). The legacy bare-string
   form (path only) remains accepted and tracks no hash.
-- `dir_hash` — present only on `kind: dir_summary` entries. `sha256:<hex>` of the
-  sorted `source_hash` values for all sources in the directory at the time the
-  dir_summary was last authored. `/kb-card` uses this to decide whether to
-  regenerate the dir_summary card on a re-run, without re-reading card bodies.
+- `dir_hash` — present only on `kind: dir_summary` entries. Canonical formula
+  (owned by `kbi manifest-sync`, §5.8): `sha256:<hex>` of the sorted **unique**
+  `source_hash` values for all sources in the directory, newline-joined.
+  `/kb-card` uses this to decide whether to regenerate the dir_summary card on
+  a re-run, without re-reading card bodies. Never hand-compute it — run
+  `manifest-sync` and act on its `dir_hash: changed/unchanged` report.
+  (Manifests written before the formula was canonicalized may hold a value
+  from a different serialization; the first `manifest-sync` normalizes it,
+  which triggers at most one spurious dir_summary refresh.)
 
 ### 3.3 Reconcile semantics
 
@@ -686,11 +691,23 @@ directory that contains a `.kb/segmentation.yml`:
 2. **Compare** to the `dir_fingerprint` stored in `segmentation.yml`.
 3. If they differ (or `segmentation.yml` is absent, or has no `dir_fingerprint`):
    mark the directory **stale**.
-4. For each stale directory, invoke:
+4. For each stale directory, write a **content delta file** to
+   `<tmpdir>/kbi-update/<dir-slug>.delta.yml` and invoke:
    ```
-   claude -p /kb-card <dir-path>
+   claude -p '/kb-card --delta <delta-file>'
    ```
-   Wait for completion before proceeding to the next directory.
+   Wait for completion before proceeding to the next directory. The delta is
+   authoritative (computed from the manifest's recorded hashes) and strictly
+   scopes the agent's work: `unchanged` (count — untouchable), `changed`
+   (path, old/new hash, bound card slugs), `new`, `deleted`, `reopened`
+   (a recorded exclusion/supersession whose input drifted), `bootstrap`.
+   Each `changed` entry also carries a unified `diff` when the previous
+   content is recoverable — the directory is a git work tree and the HEAD
+   version matches the recorded hash (guaranteed right after an auto-commit,
+   see below) — and the diff is ≤200 lines (`.mm` sources are diffed at the
+   mm2md level). Small diffs let the agent refresh cards without re-reading
+   whole sources. If the delta file cannot be written, the plain `/kb-card`
+   invocation is used and the agent re-derives the delta.
 5. After all stale directories are refreshed, proceed with normal indexing.
 
 The mtime fingerprint is backed by a content-level check: when the fingerprint
@@ -727,6 +744,30 @@ A directory without a `segmentation.yml` (no cards authored yet) is skipped —
 **Note:** `claude -p /kb-card` uses the slow path (Claude CLI). On large trees
 with many stale directories, this can be slow. `--update` is intended for
 scheduled or pre-commit use, not interactive indexing.
+
+### 5.8 `kbi hash` / `kbi manifest-sync` — mechanical manifest helpers
+
+Owned-by-tooling verbs so `/kb-card` never hand-computes hashes or
+serializations:
+
+```
+python3 kbi.py hash <file>...        # sha256:<hex>  <path> — canonical source_hash
+python3 kbi.py manifest-sync [<dir>] # refresh a manifest's derivable fields
+```
+
+- `hash` prints the canonical KB content hash per file: sha256 of the **raw
+  bytes** of the named file. For `.mm` sources this is the `.mm` itself,
+  never its mm2md conversion.
+- `manifest-sync` recomputes, from current on-disk bytes: every card's
+  `source_hash` (local file sources), hashed `supersedes`/`exported_as`/
+  `excluded` entries (dict form only — bare strings stay untracked),
+  `dir_hash` on dir_summary entries (canonical formula, §3.2),
+  `dir_fingerprint`, and the top-level `updated` date. It reports what
+  changed and warns about missing/unreadable sources without touching their
+  entries. Because it **ratifies current content as the decided state**,
+  `/kb-card` runs it only as the final step of a successful pass — never to
+  silence unreviewed drift. YAML comments and formatting are normalized on
+  rewrite.
 
 ## 6. Consumer Subscription Model
 

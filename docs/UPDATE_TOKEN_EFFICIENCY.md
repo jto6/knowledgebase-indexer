@@ -1,11 +1,18 @@
 # Token-Efficient --update: Analysis and Design
 
-Status: **Phases 1–2 implemented** (Phase 1 2026-07-17: D1, D7, D8 in
+Status: **Phases 1–3 implemented** (Phase 1 2026-07-17: D1, D7, D8 in
 `kbi.py`; Phase 2 2026-07-18: D2 `excluded:` section + hashed
-`supersedes`/`exported_as` entries in the staleness check, `/kb-card`
-taught to write both). Tests in `tests/unit/test_update_staleness.py`;
-documented in `REFERENCE.md` §3.1/§3.2/§5.7 and `kb-card.md`. Phases 3–4
-remain proposed. Motivating incident: the 2026-07-17
+`supersedes`/`exported_as` entries; Phase 3 2026-07-18: D3 delta handoff
+(`_dir_content_delta` + `--delta` file + skill contract), D5 `kbi hash` /
+`kbi manifest-sync` helper verbs (which also canonicalized the previously
+agent-improvised `dir_hash` formula), D6 git-recoverable ≤200-line diffs
+embedded per changed source, `.mm` diffed at the mm2md level). Delta mode
+in `kb-card.md` already carries D4's non-blocking rule (apply the
+recommended option, record durably, report under `Decisions made`), so of
+Phase 4 only the `decided: auto` markers, `kbi decisions` listing, and
+persist-plan-first checkpointing remain. Tests in
+`tests/unit/test_update_staleness.py`; documented in `REFERENCE.md`
+§3.1/§3.2/§5.7/§5.8 and `kb-card.md`. Motivating incident: the 2026-07-17
 `./kbi.py configs/Study25-cards.yml --update` run found 14 stale directories
 and exhausted the five-hour token window after ~10 of them, even though most
 directories had tiny or zero real changes.
