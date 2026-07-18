@@ -1,4 +1,4 @@
-# Token-Efficient --update: Analysis and Design
+# Token-Efficient --update-cards: Analysis and Design
 
 Status: **Phases 1–3 implemented** (Phase 1 2026-07-17: D1, D7, D8 in
 `kbi.py`; Phase 2 2026-07-18: D2 `excluded:` section + hashed
@@ -195,7 +195,7 @@ Skill contract changes (kb-card.md):
 
 ### D4. Headless auto mode with durable judgment calls
 
-`--update` invokes `/kb-card --delta ... -auto`. In `-auto` mode:
+`--update-cards` invokes `/kb-card --delta ... -auto`. In `-auto` mode:
 
 - The Step 2.3 review gate does not block. For each judgment call the skill
   applies its recommended option (the one it would have bolded), executes,
@@ -275,7 +275,7 @@ After a successful per-directory refresh (`rc == 0`), `run_update`:
    (`git -C <dir> diff --cached --quiet -- .kb` fails), with:
 
    ```
-   kb: refresh knowledge cards for <repo-relative-dir> (kbi --update)
+   kb: refresh knowledge cards for <repo-relative-dir> (kbi --update-cards)
 
    Signed-off-by: <git config user.name> <git config user.email>
    ```
@@ -289,7 +289,7 @@ After a successful per-directory refresh (`rc == 0`), `run_update`:
    staged set is confined to `.kb/` before committing, else skip with a
    warning).
 
-Escape hatch: `--update --no-commit` CLI flag; per-area opt-out
+Escape hatch: `--update-cards --no-commit` CLI flag; per-area opt-out
 `update_commit: false` in `kb.yml`. Default: commit when in a repo.
 
 Implemented in `kbi.py` (deterministic, zero tokens) — not in the skill.

@@ -54,7 +54,7 @@ BUILTIN_TYPES = [
 ]
 
 
-# Built-in source-exclude patterns applied by --update's staleness check even
+# Built-in source-exclude patterns applied by --update-cards's staleness check even
 # when no kb.yml is present.  Users can extend (not replace) via kb.yml
 # `source_exclude`.  Hidden files (.*) are always excluded separately.
 _DEFAULT_SOURCE_EXCLUDE = [
@@ -565,7 +565,7 @@ class KnowledgebaseIndexer:
         """Compute the content delta between segmentation.yml and the directory.
 
         Returns a dict describing exactly what drifted — this is the payload
-        of the --update delta handoff, so /kb-card consumes it instead of
+        of the --update-cards delta handoff, so /kb-card consumes it instead of
         re-deriving it:
 
           bootstrap  — True when no cards are recorded yet (first run)
@@ -886,7 +886,7 @@ class KnowledgebaseIndexer:
                   file=sys.stderr)
             return
         prefix = git('rev-parse', '--show-prefix').stdout.strip().rstrip('/') or '.'
-        msg = f"kb: refresh knowledge cards for {prefix} (kbi --update)"
+        msg = f"kb: refresh knowledge cards for {prefix} (kbi --update-cards)"
         if body:
             msg += '\n\n' + body
         r = git('commit', '--only', '-s', '-m', msg, '--', '.kb')
@@ -895,7 +895,7 @@ class KnowledgebaseIndexer:
                   f"{(r.stderr or r.stdout).strip()}", file=sys.stderr)
             return
         sha = git('rev-parse', '--short', 'HEAD').stdout.strip()
-        print(f"--update: committed .kb refresh in {directory} ({sha})", flush=True)
+        print(f"--update-cards: committed .kb refresh in {directory} ({sha})", flush=True)
 
     # Diffs above this size are omitted from the delta file — the agent reads
     # the source instead (a huge diff is no cheaper than the file itself).
@@ -942,7 +942,7 @@ class KnowledgebaseIndexer:
 
         The previous content is only recoverable when the directory is in a
         git work tree and the HEAD version of the file matches the recorded
-        hash (guaranteed right after a --update auto-commit).  .mm sources
+        hash (guaranteed right after a --update-cards auto-commit).  .mm sources
         are diffed via their mm2md conversion when the converter is
         available.  Returns None for binary content, oversized diffs
         (> _DIFF_MAX_LINES lines), or an unrecoverable old version — the
@@ -1000,7 +1000,7 @@ class KnowledgebaseIndexer:
             'directory': directory,
             'generated': datetime.now().isoformat(timespec='seconds'),
             'scope': 'non-recursive',
-            'note': ('Authoritative content delta from kbi --update. Hashes are '
+            'note': ('Authoritative content delta from kbi --update-cards. Hashes are '
                      'sha256 of raw file bytes. Do not re-hash, re-read, or touch '
                      'sources counted in `unchanged`.'),
             'bootstrap': delta['bootstrap'],
@@ -1021,7 +1021,7 @@ class KnowledgebaseIndexer:
             digest = hashlib.sha256(directory.encode()).hexdigest()[:8]
             path = root / f"{slug}-{digest}.delta.yml"
             with open(path, 'w', encoding='utf-8') as fh:
-                fh.write('# kbi --update content delta — consumed by /kb-card --delta\n')
+                fh.write('# kbi --update-cards content delta — consumed by /kb-card --delta\n')
                 _yaml.safe_dump(doc, fh, sort_keys=False, allow_unicode=True, width=100)
             return str(path)
         except OSError:
@@ -1043,14 +1043,14 @@ class KnowledgebaseIndexer:
         """
         import tempfile
 
-        print("--update: scanning for managed directories …", flush=True)
+        print("--update-cards: scanning for managed directories …", flush=True)
         stale, current_count = self._scan_managed_directories(config)
 
         for d, _delta in stale:
             print(f"  stale: {d}", flush=True)
 
         total = len(stale) + current_count
-        print(f"--update: {total} managed director{'ies' if total != 1 else 'y'} found, "
+        print(f"--update-cards: {total} managed director{'ies' if total != 1 else 'y'} found, "
               f"{len(stale)} stale, {current_count} current", flush=True)
 
         if not stale:
@@ -1060,7 +1060,7 @@ class KnowledgebaseIndexer:
         consecutive_failures = 0
         refreshed = 0
         for i, (d, delta) in enumerate(stale, 1):
-            print(f"--update: [{i}/{len(stale)}] refreshing {d}", flush=True)
+            print(f"--update-cards: [{i}/{len(stale)}] refreshing {d}", flush=True)
             delta_file = self._write_delta_file(delta_root, d, delta)
             prompt = ('/kb-card' if delta_file is None
                       else f'/kb-card --delta {delta_file}')
@@ -1090,14 +1090,14 @@ class KnowledgebaseIndexer:
                           else 'two consecutive failures')
                 remaining = [t[0] for t in stale[i:]]
                 still = len(remaining) + 1
-                print(f"--update: aborting ({reason}); "
+                print(f"--update-cards: aborting ({reason}); "
                       f"{still} director{'ies' if still != 1 else 'y'} "
                       f"still stale (picked up next run):", file=sys.stderr)
                 for r in [d] + remaining:
                     print(f"  still stale: {r}", file=sys.stderr)
                 return
 
-        print(f"--update: done ({refreshed} of {len(stale)} "
+        print(f"--update-cards: done ({refreshed} of {len(stale)} "
               f"director{'ies' if len(stale) != 1 else 'y'} refreshed)", flush=True)
 
     def _resolve_keyword_files(self, domain: Optional[str]) -> List[str]:
@@ -1705,7 +1705,7 @@ def run_decisions(argv: List[str]) -> int:
     directories (`.kb/segmentation.yml`) and prints every entry marked
     `decided: auto` — exclusions and hashed supersedes/exported_as records
     written headlessly by /kb-card delta mode — newest first, so decisions
-    made by unattended --update runs can be audited without terminal
+    made by unattended --update-cards runs can be audited without terminal
     scrollback.  Accepting a decision is free (do nothing); to override,
     edit the manifest (or re-run /kb-card interactively), which flips the
     entry to `decided: user`.
@@ -1798,7 +1798,7 @@ Examples:
   python kbi.py configs/Study25.yml --output my_index.mm
 
   # Refresh stale card sets first (delta handoff to /kb-card), then index
-  python kbi.py configs/Study25.yml --update            # add --no-commit to
+  python kbi.py configs/Study25.yml --update-cards      # add --no-commit to
                                                         # skip .kb auto-commits
 
   # Search just the indexed files (ripgrep, else grep)
@@ -1844,7 +1844,7 @@ Examples:
     )
     
     parser.add_argument(
-        '--update',
+        '--update-cards',
         action='store_true',
         help='Refresh stale card sets (via claude -p /kb-card) before indexing'
     )
@@ -1852,7 +1852,7 @@ Examples:
     parser.add_argument(
         '--no-commit',
         action='store_true',
-        help='With --update: do not auto-commit refreshed .kb/ changes in git repositories'
+        help='With --update-cards: do not auto-commit refreshed .kb/ changes in git repositories'
     )
 
     parser.add_argument(
@@ -1957,7 +1957,7 @@ output:
             generator = KnowledgebaseIndexer(config)
             generator.set_debug(args.debug)
 
-            if args.update:
+            if args.update_cards:
                 generator.run_update(config, no_commit=args.no_commit)
 
             output_path = generator.run()

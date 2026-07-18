@@ -119,13 +119,13 @@ You never redo settled decisions — locked boundaries persist; only genuinely
 changed content is re-reviewed. (See `REFERENCE.md` §4.4 for the reconcile
 outcomes.) Regenerate the catalog afterward (Part 2).
 
-### Or let the indexer drive the refresh (`kbi --update`)
+### Or let the indexer drive the refresh (`kbi --update-cards`)
 
-Instead of re-running `/kb-card` by hand per area, add `--update` to a
+Instead of re-running `/kb-card` by hand per area, add `--update-cards` to a
 catalog build and kbi refreshes every stale managed directory first:
 
 ```bash
-cd ~/dev/kbi && ./kbi.py configs/catalog.yml --update
+cd ~/dev/kbi && ./kbi.py configs/catalog.yml --update-cards
 ```
 
 For each directory with a `.kb/segmentation.yml`, kbi does a cheap two-level
@@ -147,7 +147,7 @@ Afterward, audit any decisions made without you:
 ```
 
 An interrupted run (usage limit, crash) is safe: the plan is checkpointed
-in `segmentation.yml` (`status: pending`), so the next `--update` resumes
+in `segmentation.yml` (`status: pending`), so the next `--update-cards` resumes
 authoring where it stopped instead of re-analyzing. See `REFERENCE.md`
 §5.7–5.8 and `UPDATE_TOKEN_EFFICIENCY.md` for details.
 

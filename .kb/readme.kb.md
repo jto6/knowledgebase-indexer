@@ -11,7 +11,7 @@ updated: 2026-07-18
 
 # Knowledgebase Indexer — Overview
 
-> kbi is a Python tool that scans structured file collections (`.mm`, `.md`, `.kb.md`), builds a render-independent four-view index model, and emits it as Freeplane mindmaps or Markdown navigational indexes, with a token-efficient `--update` mode that hands stale-content deltas to `/kb-card`.
+> kbi is a Python tool that scans structured file collections (`.mm`, `.md`, `.kb.md`), builds a render-independent four-view index model, and emits it as Freeplane mindmaps or Markdown navigational indexes, with a token-efficient `--update-cards` mode that hands stale-content deltas to `/kb-card`.
 
 ## Core Concepts
 
@@ -26,7 +26,7 @@ updated: 2026-07-18
 - **Card integration**: `.kb.md` cards are indexed card-aware — tags and title come from YAML frontmatter, not the filename or body hashtags
 - **Domain partitioning**: files are routed to domain buckets via nearest `kb.yml`; partitioned indexes split all views per domain
 - **Self-indexing prevention**: every generated output carries an invisible provenance comment so re-runs skip their own prior output
-- **`--update`**: refreshes stale card sets before indexing — scans managed directories (`.kb/segmentation.yml`), computes a per-directory content delta, and hands it to `claude -p '/kb-card --delta <file>'` for each stale directory; successful refreshes in git repos auto-commit only the `.kb/` paths (`--no-commit` suppresses this)
-- **Helper subcommands**: `kbi search <config> "<regex>"` (search exactly the files a config covers, via ripgrep/grep); `kbi hash <file>...` (canonical `source_hash` per file); `kbi manifest-sync [<dir>]` (mechanically refresh a manifest's derivable hashes/fingerprint); `kbi decisions [<root>]` (audit segmentation decisions made headlessly by `--update` runs)
-- **Documentation set**: `docs/TUTORIAL.md` (getting-started walkthrough), `docs/REFERENCE.md` (full meta-file/schema/command reference), `docs/DESIGN_PRINCIPLES_AND_DECISIONS.md` (architecture rationale), `docs/kbi_PRD.md` (engine requirements), `docs/UPDATE_TOKEN_EFFICIENCY.md` (design rationale for `--update`)
-- **CLI flags**: `--config`, `--output`, `--debug`, `--sample-config`, `--sample-keywords`, `--update`, `--no-commit`
+- **`--update-cards`**: refreshes stale card sets before indexing — scans managed directories (`.kb/segmentation.yml`), computes a per-directory content delta, and hands it to `claude -p '/kb-card --delta <file>'` for each stale directory; successful refreshes in git repos auto-commit only the `.kb/` paths (`--no-commit` suppresses this)
+- **Helper subcommands**: `kbi search <config> "<regex>"` (search exactly the files a config covers, via ripgrep/grep); `kbi hash <file>...` (canonical `source_hash` per file); `kbi manifest-sync [<dir>]` (mechanically refresh a manifest's derivable hashes/fingerprint); `kbi decisions [<root>]` (audit segmentation decisions made headlessly by `--update-cards` runs)
+- **Documentation set**: `docs/TUTORIAL.md` (getting-started walkthrough), `docs/REFERENCE.md` (full meta-file/schema/command reference), `docs/DESIGN_PRINCIPLES_AND_DECISIONS.md` (architecture rationale), `docs/kbi_PRD.md` (engine requirements), `docs/UPDATE_TOKEN_EFFICIENCY.md` (design rationale for `--update-cards`)
+- **CLI flags**: `--config`, `--output`, `--debug`, `--sample-config`, `--sample-keywords`, `--update-cards`, `--no-commit`

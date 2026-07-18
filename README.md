@@ -44,17 +44,17 @@ python3 kbi.py configs/myconfig.yml --debug
 python3 kbi.py configs/myconfig.yml --output my_index.mm
 ```
 
-### Refreshing knowledge cards (`--update`)
+### Refreshing knowledge cards (`--update-cards`)
 
 ```bash
 # Refresh stale card sets before indexing: scans managed directories
 # (.kb/segmentation.yml), computes a per-directory content delta, and hands
 # it to `claude -p '/kb-card --delta <file>'` for each stale directory.
 # Successful refreshes in git repositories auto-commit only the .kb/ paths.
-python3 kbi.py configs/myconfig.yml --update
+python3 kbi.py configs/myconfig.yml --update-cards
 
 # Same, without the .kb auto-commits
-python3 kbi.py configs/myconfig.yml --update --no-commit
+python3 kbi.py configs/myconfig.yml --update-cards --no-commit
 ```
 
 See `docs/REFERENCE.md` §5.7 for the staleness rules and delta format, and
@@ -73,7 +73,7 @@ python3 kbi.py hash <file>...
 # (source_hash values, dir_hash, dir_fingerprint, updated)
 python3 kbi.py manifest-sync [<dir>]
 
-# Audit segmentation decisions made headlessly by --update runs
+# Audit segmentation decisions made headlessly by --update-cards runs
 python3 kbi.py decisions [<root>]
 ```
 

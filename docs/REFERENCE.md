@@ -275,7 +275,7 @@ Optional:
 - `draws_on` — list of upstream domains this area subscribes to (drives consumer
   wiring; rendered as a cross-domain edge).
 - `source_exclude` — list of glob patterns for files in the directory that should
-  never be treated as KB sources. Used by `kbi --update` when scanning for new
+  never be treated as KB sources. Used by `kbi --update-cards` when scanning for new
   untracked files that might need a card. The following patterns are always applied
   as built-in defaults even when `source_exclude` is absent; any patterns listed
   here are appended to those defaults:
@@ -336,7 +336,7 @@ it is *not* an index of cards (that is the cards themselves, plus
   mtime_ns}` tuples for all non-hidden source files in the directory (all files
   outside `.kb/`), sorted by filename. Written (or updated) every time `/kb-card`
   successfully runs on the directory. **This is the staleness signal for `kbi
-  --update`** (§5.7): kbi recomputes the fingerprint from `os.stat()` calls — no
+  --update-cards`** (§5.7): kbi recomputes the fingerprint from `os.stat()` calls — no
   file reads needed — and compares it to the stored value. A mismatch means at
   least one file was added, removed, renamed, resized, or touched since the last
   `/kb-card` run.
@@ -345,7 +345,7 @@ it is *not* an index of cards (that is the cards themselves, plus
   decided **not** to card (disposable scratch, templates with no distillable
   knowledge, empty files). Each entry: `path` (relative to `.kb/`), `reason`
   (short, human-auditable), `source_hash` (`sha256:<hex>` of the file at
-  decision time). The decision stands while the hash matches: `kbi --update`
+  decision time). The decision stands while the hash matches: `kbi --update-cards`
   treats the file as tracked-and-unchanged, and `/kb-card` skips it without
   re-evaluation. Content drift re-opens the decision (the file is re-surfaced
   as new); deleting the file just prunes the entry at the next reconcile. A
@@ -373,14 +373,14 @@ it is *not* an index of cards (that is the cards themselves, plus
   (near-duplicates/earlier versions, and format exports, respectively) that
   are not carded separately. Preferred entry form is a dict —
   `{path: ../foo_v1.pdf, source_hash: sha256:...}` — so that editing the
-  absorbed file re-opens the decision (`kbi --update` marks the directory
+  absorbed file re-opens the decision (`kbi --update-cards` marks the directory
   stale and `/kb-card` re-surfaces the file as new). The legacy bare-string
   form (path only) remains accepted and tracks no hash. Dict entries also
   carry `decided:`/`decided_on:` (same semantics as `excluded`, §3.1).
 - `status` — transient checkpoint marker. `pending` means the entry's plan
   (boundary + decisions) is persisted but its card body is not yet authored;
   `/kb-card` writes it at the Step 2.5 checkpoint and removes it as each
-  body lands. `kbi --update` treats pending entries as work to resume (the
+  body lands. `kbi --update-cards` treats pending entries as work to resume (the
   directory stays stale and the delta lists them), so an interrupted run
   never re-derives its analysis. Absent in a completed run.
 - `dir_hash` — present only on `kind: dir_summary` entries. Canonical formula
@@ -405,7 +405,7 @@ Decisions are refined, never redone.
 version: 1
 updated: 2026-06-07
 density: fine
-dir_fingerprint: sha256:a1b2c3d4...   # recomputed by kbi --update for staleness check
+dir_fingerprint: sha256:a1b2c3d4...   # recomputed by kbi --update-cards for staleness check
 density_overrides:
   - source: ../reports/foo.pdf
     section: "Architecture"
@@ -468,7 +468,7 @@ manual review. It does **not** run `kbi`.
   the review/adjustment gate.
 - `-resegment` — discard a source's existing boundaries and re-propose fresh.
 - `-update` — refresh content of existing cards whose source drifted.
-- `--delta <file>` — **delta mode**, how `kbi --update` invokes the command
+- `--delta <file>` — **delta mode**, how `kbi --update-cards` invokes the command
   (§5.7). The file is an authoritative content delta; the run is strictly
   scoped to what it lists (no re-hashing or re-reading of unchanged
   sources), runs headless (judgment calls applied and recorded as
@@ -720,13 +720,13 @@ kbi.py search configs/Study25.yml "a-core" -i        # case-insensitive
 kbi.py search configs/Study25.yml "TODO|FIXME" -l    # list matching files only
 ```
 
-### 5.7 `kbi --update` — auto-refresh stale cards before indexing
+### 5.7 `kbi --update-cards` — auto-refresh stale cards before indexing
 
 ```
-python3 kbi.py --update <config.yml>
+python3 kbi.py --update-cards <config.yml>
 ```
 
-`--update` resolves the same directory set the config would index, then for each
+`--update-cards` resolves the same directory set the config would index, then for each
 directory that contains a `.kb/segmentation.yml`:
 
 1. **Compute the current `dir_fingerprint`**: hash of sorted
@@ -771,26 +771,26 @@ reconcile).
 
 **Fail fast.** The refresh loop aborts early when the Claude CLI output
 reports a spend/usage limit, or after two consecutive nonzero exits. The
-remaining directories are listed and stay stale; the next `--update` run picks
+remaining directories are listed and stay stale; the next `--update-cards` run picks
 them up.
 
 **Auto-commit.** After each successful refresh, if the directory is inside a
 git work tree, kbi commits that directory's `.kb/` changes — and nothing else
 (`git add -A -- .kb` + `git commit --only -- .kb`, so changes staged elsewhere
 in the repository are neither committed nor disturbed). The message is
-`kb: refresh knowledge cards for <repo-relative-dir> (kbi --update)` with a
+`kb: refresh knowledge cards for <repo-relative-dir> (kbi --update-cards)` with a
 `Signed-off-by` trailer from the repository's git identity (`git commit -s`);
 when the run's report contains a `Decisions made` section, it is embedded in
 the commit body, making `git log` a durable journal of headless decisions.
 Nothing is ever pushed. Opt out per run with `--no-commit`, or per area with
 `update_commit: false` in the nearest `.kb/kb.yml`.
 
-If `--update` is combined with a normal index run, the refresh pass runs first.
+If `--update-cards` is combined with a normal index run, the refresh pass runs first.
 A directory without a `segmentation.yml` (no cards authored yet) is skipped —
-`--update` updates existing card sets; it does not bootstrap new areas.
+`--update-cards` updates existing card sets; it does not bootstrap new areas.
 
 **Note:** `claude -p /kb-card` uses the slow path (Claude CLI). On large trees
-with many stale directories, this can be slow. `--update` is intended for
+with many stale directories, this can be slow. `--update-cards` is intended for
 scheduled or pre-commit use, not interactive indexing.
 
 ### 5.8 `kbi hash` / `kbi manifest-sync` / `kbi decisions` — manifest helpers
@@ -821,7 +821,7 @@ python3 kbi.py decisions [<root>]    # list decided: auto entries, newest first
 - `decisions` walks the tree under `<root>` (default `.`) for managed
   directories and prints every `decided: auto` entry (exclusions and hashed
   `supersedes`/`exported_as` records written headlessly by delta mode),
-  newest first — the durable audit trail for unattended `--update` runs.
+  newest first — the durable audit trail for unattended `--update-cards` runs.
   `--all` includes `decided: user` entries too. Accepting a decision is
   free (do nothing); overriding is a manifest edit (set `decided: user`) or
   an interactive `/kb-card` run. Decisions also appear in each run's

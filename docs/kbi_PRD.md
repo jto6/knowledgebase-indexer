@@ -254,7 +254,7 @@ file_types:
 - **R-PERF-002**: Minimize memory usage during file processing
 - **R-PERF-003**: Support caching for improved performance on repeated operations
 
-## 6. Card Refresh (`--update`) Requirements
+## 6. Card Refresh (`--update-cards`) Requirements
 
 Token-efficiency design rationale: `docs/UPDATE_TOKEN_EFFICIENCY.md`.
 Manifest field semantics: `docs/REFERENCE.md` §3; command behavior: §5.7–5.8.

@@ -71,7 +71,7 @@ python3 kbi.py configs/myconfig.yml --output my_index.mm
 
 # Refresh stale card sets first (delta handoff to /kb-card; auto-commits
 # .kb/ changes in git repos — suppress with --no-commit)
-python3 kbi.py configs/myconfig.yml --update
+python3 kbi.py configs/myconfig.yml --update-cards
 
 # Helper subcommands (see docs/REFERENCE.md §5.6–5.8)
 python3 kbi.py search configs/myconfig.yml "<regex>" -i

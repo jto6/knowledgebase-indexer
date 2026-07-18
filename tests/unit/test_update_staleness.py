@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for the --update staleness check and refresh loop helpers.
+Unit tests for the --update-cards staleness check and refresh loop helpers.
 
 Covers _dir_content_changed (absorbed-source handling, new/changed/deleted
 sources), _is_budget_exhausted, and _commit_kb_updates (pathspec-confined
