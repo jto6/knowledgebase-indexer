@@ -64,7 +64,7 @@ first: it downloads the **transcript**, writes it as a visible local file, and
 distills a card whose `source` links back to the video.
 
 ```bash
-cd ~/dev/sermons          # an area with its own .kb/kb.yml (e.g. domain: spiritual)
+cd ~/dev/spiritual/sermons      # an area with its own .kb/kb.yml (e.g. domain: spiritual)
 /kb-card https://www.youtube.com/watch?v=XXXXXXXX
 ```
 
