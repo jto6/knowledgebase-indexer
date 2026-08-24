@@ -75,6 +75,38 @@ source) and a card `sermons/.kb/<slug>.kb.md` whose `source` lists the YouTube U
 Transcript-only is the default and is right for spoken-word talks; a richer
 `-visual` capture for slide-heavy videos is planned but not yet available.
 
+### Capture only what you came for (`-focus`)
+
+An hour-long talk covers a dozen topics, and often you want real cards for one
+of them. Say so in prose:
+
+```bash
+/kb-card 2026-03-14-marx-lecture.md \
+    -focus "communism sound in principle vs unworkable in practice, and why"
+```
+
+Deep cards are authored only for the topics that match. The rest of the lecture
+is not lost — `-focus` forces a **file-summary card** covering the whole talk and
+naming every topic — it just doesn't get a card each. So you spend card depth
+where you care and still know what else was said.
+
+Two things make this worth a flag rather than hand-pruning the proposal:
+
+- **It costs less.** The pass scans all the topics (cheap — titles only), then
+  cuts deep and distills bodies *only* inside the focus. You never pay to write
+  the eleven cards you were going to throw away.
+- **It sticks.** The directive is recorded in `segmentation.yml` and re-applied
+  on every later pass. Unlike an exclusion it is **not** re-opened when the
+  source changes — a focus describes what you want, which doesn't stop being
+  true because the transcript gained a paragraph. Clear it with `-no-focus`, or
+  replace it by passing `-focus` again.
+
+Every card from a focused source records `meta.focus`, so later you can tell a
+six-minute distillation from a treatment of the whole lecture. Add
+`-floor coarse` if you also want a shallow card per off-focus topic; the default
+leaves them to the summary. `kbi decisions` lists standing focus directives on
+every audit, so a narrowed source never quietly disappears from view.
+
 ### Overriding the adaptive choice
 
 When you want a result the tool would not pick on its own, declare it in the
@@ -88,6 +120,8 @@ area's `kb.yml` (applies to the subtree) or pass a flag:
 - **Set the depth** — `card_density: coarse|normal|fine|exhaustive`, or per run
   `-density fine`; cap with `-cards N` (a **maximum**, never a quota — it will not
   invent topics to reach N).
+- **Spend depth on one topic** — `-focus "<prose>"` authors deep cards only where
+  the prose lands, leaving the rest of the source to the file-summary card (above).
 - **Review before authoring** — `-plan` proposes the segmentation into `segmentation.yml`
   and stops. Edit it (merge / split / relabel, or add a `density_overrides` entry
   to go deeper on one section), then run without `-plan` to author.
@@ -267,12 +301,15 @@ up the directory tree).
 
 ## Cheat sheet
 
-| Goal                         | Command                                      |
-|------------------------------|----------------------------------------------|
-| Author cards (tool adapts)   | `/kb-card` · `/kb-card -r <root>`            |
-| Preview before authoring     | `/kb-card -plan <file>`                      |
-| Force one card per file      | `card_unit: file` in `kb.yml`                |
-| Never split a dense file     | `card_split: never` in `kb.yml`              |
-| Split deeper / cap the count | `/kb-card -density fine <file>` / `-cards N` |
-| Re-segment a changed source  | `/kb-card -resegment <file>`                 |
-| Build the catalog            | `python3 kbi.py <catalog.yml>`               |
+| Goal                           | Command                                      |
+|--------------------------------|----------------------------------------------|
+| Author cards (tool adapts)     | `/kb-card` · `/kb-card -r <root>`            |
+| Preview before authoring       | `/kb-card -plan <file>`                      |
+| Force one card per file        | `card_unit: file` in `kb.yml`                |
+| Never split a dense file       | `card_split: never` in `kb.yml`              |
+| Split deeper / cap the count   | `/kb-card -density fine <file>` / `-cards N` |
+| Depth on one topic only        | `/kb-card <file> -focus "<prose>"`           |
+| Drop a focus directive         | `/kb-card <file> -no-focus`                  |
+| Re-segment a changed source    | `/kb-card -resegment <file>`                 |
+| Audit standing focus/decisions | `python3 kbi.py decisions [<root>]`          |
+| Build the catalog              | `python3 kbi.py <catalog.yml>`               |

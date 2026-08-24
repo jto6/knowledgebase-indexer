@@ -332,6 +332,26 @@ it is *not* an index of cards (that is the cards themselves, plus
 - `density` — the directory's effective depth (`coarse|normal|fine|exhaustive`).
 - `density_overrides` — optional list of per-`(source, section)` depth directives
   (non-uniform depth). Each entry: `source`, `section`, `density`.
+- `focus` — optional list of per-`source` **focus directives**: non-uniform depth
+  selected *semantically* rather than by section name (§4.5). Each entry:
+	- `source` — path relative to `.kb/`.
+	- `interest` — free prose naming what the author wants from this source.
+	  Topics are matched against it semantically, never by heading name or
+	  ordinal, so the directive survives re-segmentation.
+	- `density` — depth **inside** the focus. Defaults to the source's ordinary
+	  effective density; focus spends normal depth in one place, it does not
+	  silently deepen.
+	- `floor` — depth **outside** the focus: `none | coarse | normal | fine |
+	  exhaustive`, default `none`. `none` means off-focus topics get no card of
+	  their own and are carried by the file_summary card.
+	- `resolved` — `in:` / `out:` lists of the topic titles the last pass judged
+	  in-focus and off-focus. An audit record, not an input.
+	- `decided` / `decided_on` — as for `excluded` (§3.1).
+  A focus directive carries **no `source_hash`** and is deliberately *not*
+  re-opened by content drift: unlike an `excluded:` entry it is a standing
+  instruction, re-applied every pass until a replacing `-focus` or a clearing
+  `-no-focus`. It is intra-file, so it plays no part in staleness detection;
+  when its source is deleted the directive is pruned at the next reconcile.
 - `dir_fingerprint` — `sha256:<hex>`. A lightweight hash of `{filename, size,
   mtime_ns}` tuples for all non-hidden source files in the directory (all files
   outside `.kb/`), sorted by filename. Written (or updated) every time `/kb-card`
@@ -410,6 +430,18 @@ density_overrides:
   - source: ../reports/foo.pdf
     section: "Architecture"
     density: fine
+focus:                                 # semantic depth: deep here, file_summary elsewhere
+  - source: ../2026-03-14-marx-lecture.md
+    interest: >-
+      whether communism is sound in principle vs. unworkable in practice,
+      and the causal argument for the gap
+    density: fine                      # depth inside the focus
+    floor: none                        # off-focus topics: file_summary only
+    decided: user
+    decided_on: 2026-08-23
+    resolved:                          # audit record of the last pass's judgement
+      in:  ["The in-principle case", "Why it fails in practice"]
+      out: ["Hegelian dialectic background", "Paris Commune chronology"]
 cards:
   - slug: sdv-arch-overview
     id: 7f3a0000-0000-0000-0000-000000000000
@@ -455,6 +487,7 @@ manual review. It does **not** run `kbi`.
 ```
 /kb-card [source] [-r] [-plan] [-resegment] [-update]
          [--delta <file>]
+         [-focus "<prose>" | -no-focus] [-floor none|coarse|normal|fine|exhaustive]
          [-density coarse|normal|fine|exhaustive] [-cards <N>]
          [-file-summary | -no-file-summary]
          [-domain <d>] [-level 1|2|3] [-quotes | -no-quotes]
@@ -474,7 +507,14 @@ manual review. It does **not** run `kbi`.
   sources), runs headless (judgment calls applied and recorded as
   `decided: auto`), and resumes any `pending` entries. See kb-card.md
   "Delta mode" for the full contract.
-- `-density` — depth of the split (overrides `kb.yml card_density`).
+- `-focus "<prose>"` — author deep cards only for the topics of `source` that
+  match the prose; everything else is carried by the file_summary card (§4.5).
+  Recorded durably as a `focus` entry in `segmentation.yml` and re-applied on
+  every later pass. `-no-focus` clears it; a second `-focus` replaces it.
+- `-floor` — depth for the **off-focus** topics of a focused source (default
+  `none`: no cards of their own). Only meaningful with `-focus`.
+- `-density` — depth of the split (overrides `kb.yml card_density`). Under
+  `-focus` it sets the depth *inside* the focus.
 - `-cards <N>` — a **maximum** card count (a ceiling, **never a quota**):
   partitioning stops at the finest meaningful boundary and never invents or
   fragments topics to reach N.
@@ -503,12 +543,22 @@ manual review. It does **not** run `kbi`.
 All three are *optional overrides* of the adaptive proposal; omit them to let
 `/kb-card` choose.
 
+Depth may also be made non-uniform by **topic** rather than by section name —
+see `-focus` (§4.5). `density_overrides` needs a heading you can name, which you
+cannot write before a long source has been segmented; a focus directive says
+what you want in prose and lets the segmentation pass decide which topics it
+lands on.
+
 ### 4.3 Pipeline
 
 1. Resolve scope + area config (`kb.yml`) and the effective profile/density. On
    first run, auto-create `.kb/` and bootstrap a default `kb.yml` if none is found.
+   Load any `focus` directive for each source in scope (from `-focus`, else the
+   one recorded in `segmentation.yml`).
 2. **Segment:** propose boundaries (adaptive, honoring overrides), reconcile
-   against `segmentation.yml`, present the delta for review, record every
+   against `segmentation.yml`, present the delta for review — for a focused
+   source, scan topics coarsely first and cut deep only inside the focus
+   (§4.5) — record every
    deliberate non-carding decision in `excluded:` (with `decided:`/
    `decided_on:`, §3.1), then **checkpoint**: write `segmentation.yml` with
    `status: pending` on entries whose bodies are not yet authored. (`-plan`
@@ -552,6 +602,61 @@ Beyond the cards themselves:
 - **resume** — an entry still marked `status: pending` with a matching
   `source_hash` → its plan and decisions are settled; authoring continues
   directly without re-running segmentation.
+- **off-focus** — a topic of a focused source that does not match the stored
+  `interest` → recorded in the directive's `resolved.out` and *not* surfaced as
+  **new**. This is the one classification that suppresses review, and it is why
+  `file_summary` is forced on for focused sources (§4.5).
+
+### 4.5 Focus — non-uniform depth by topic
+
+`-focus "<prose>"` answers a case the density dials cannot: an hour-long lecture
+covers a dozen topics and you want real cards for one of them. Rejecting the
+other eleven by hand is both a review burden and a token cost — they get
+distilled before you can discard them — and nothing durable records the choice,
+so the next refresh proposes them all again.
+
+A focus directive is a *standing* instruction attached to the source:
+
+```bash
+/kb-card 2026-03-14-marx-lecture.md \
+    -focus "communism sound in principle vs unworkable in practice, and why"
+```
+
+**What it does to segmentation.** The pass runs in two stages. First a coarse
+scan of the *whole* source to enumerate its top-level topics — titles and
+signatures only, no distillation. Then each topic is matched semantically
+against `interest`, and deep cuts are made only inside the ones that match. The
+subsections of off-focus topics are never enumerated and their bodies are never
+authored, so the depth decision happens *before* the expensive step rather than
+after it. The whole-source scan is not avoidable; fine segmentation and body
+distillation of the topics you did not ask for is.
+
+**Breadth is preserved by the file_summary.** A focus directive forces
+`file_summary` on for its source and disables the N=1 short-circuit. The summary
+card carries the source's overall message and its full topic list, so a focused
+source is *shallower* outside the focus, never absent. Set `-floor coarse` if
+you additionally want a shallow card per off-focus topic; the default `none`
+leaves that job to the summary.
+
+**Focus vs. `excluded:`.** Both record a deliberate narrowing, with opposite
+drift semantics — and that is the point:
+
+|                  | `excluded:`                    | `focus:`                      |
+|------------------|--------------------------------|-------------------------------|
+| Granularity      | whole file                     | topics within one file        |
+| Keyed by         | `source_hash`                  | nothing — prose only          |
+| On content drift | re-opens; file re-surfaces new | re-applied unchanged          |
+| Says             | "judge this again if it moves" | "keep giving me this from it" |
+
+An exclusion is a decision about a file that may deserve revisiting. A focus is
+a description of what you want, which does not stop being true because the
+speaker added a paragraph. Consequently a focus directive stores no hash, and
+`kbi decisions` lists it on every audit rather than treating it as settled.
+
+**Honesty.** Every card from a focused source records `meta.focus: "<interest>"`
+so neither you nor a later reader mistakes a six-minute distillation for a
+treatment of the whole lecture. The review gate reports the focus and both
+`resolved` lists, so a topic dropping out of scope is visible.
 
 ## 5. The `kbi` Indexer and Catalog Config (catalog-side)
 
@@ -817,12 +922,16 @@ python3 kbi.py decisions [<root>]    # list decided: auto entries, newest first
   `/kb-card` runs it only as the final step of a successful pass — never to
   silence unreviewed drift. YAML comments and formatting are normalized on
   rewrite. It also warns about entries still marked `status: pending`
-  (unauthored bodies from an interrupted run).
+  (unauthored bodies from an interrupted run), and reports the number of
+  `focus` directives in effect. A focus directive holds no derivable field, so
+  it is preserved verbatim.
 - `decisions` walks the tree under `<root>` (default `.`) for managed
   directories and prints every `decided: auto` entry (exclusions and hashed
   `supersedes`/`exported_as` records written headlessly by delta mode),
   newest first — the durable audit trail for unattended `--update-cards` runs.
-  `--all` includes `decided: user` entries too. Accepting a decision is
+  `--all` includes `decided: user` entries too. **`focus` directives are always
+  listed**, whatever their `decided:` value: unlike an exclusion, a focus does
+  not settle — it re-shapes every subsequent pass, so it belongs in every audit. Accepting a decision is
   free (do nothing); overriding is a manifest edit (set `decided: user`) or
   an interactive `/kb-card` run. Decisions also appear in each run's
   `Decisions made` report section and in the auto-commit message bodies.

@@ -529,3 +529,116 @@ class TestCommitKbUpdates:
         head2 = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'],
                                capture_output=True, text=True).stdout
         assert head == head2
+
+
+@pytest.mark.quick
+class TestFocusDirectives:
+    """Card focus (`-focus`): PRD §7 — R-FOCUS-DUR-005, R-FOCUS-TOOL-001/002."""
+
+    def _managed(self, root: Path, name: str, seg: dict) -> Path:
+        d = root / name
+        (d / '.kb').mkdir(parents=True)
+        (d / '.kb' / 'segmentation.yml').write_text(
+            yaml.safe_dump(seg, sort_keys=False))
+        return d
+
+    def _focus(self, **over) -> dict:
+        entry = {'source': '../lecture.md',
+                 'interest': 'communism sound in principle vs unworkable in '
+                             'practice, and the causal argument for the gap',
+                 'density': 'fine',
+                 'floor': 'none',
+                 'decided': 'user',
+                 'decided_on': '2026-08-23',
+                 'resolved': {'in': ['The in-principle case'],
+                              'out': ['Hegelian background', 'Paris Commune']}}
+        entry.update(over)
+        return entry
+
+    # --- R-FOCUS-TOOL-002: always listed, whatever `decided:` says ---
+
+    def test_focus_listed_without_all_flag_even_when_decided_user(
+            self, tmp_path, capsys):
+        self._managed(tmp_path, 'one', {'cards': [],
+                                        'focus': [self._focus()]})
+        assert run_decisions([str(tmp_path)]) == 0
+        out = capsys.readouterr().out
+        assert '../lecture.md' in out
+        assert 'in principle' in out
+        assert 'floor: none' in out
+        assert '1 in / 2 off-focus' in out
+        assert 'standing focus directive' in out
+
+    def test_focus_listed_alongside_auto_decisions(self, tmp_path, capsys):
+        self._managed(tmp_path, 'one', {
+            'cards': [],
+            'excluded': [{'path': '../Delme.md', 'reason': 'disposable',
+                          'source_hash': 'sha256:y',
+                          'decided': 'auto', 'decided_on': '2026-07-18'}],
+            'focus': [self._focus(decided='auto')],
+        })
+        assert run_decisions([str(tmp_path)]) == 0
+        out = capsys.readouterr().out
+        assert 'Delme.md' in out and '../lecture.md' in out
+        assert '2 decisions' in out
+
+    def test_user_excluded_still_hidden_while_focus_shows(self, tmp_path, capsys):
+        """Focus's always-list rule must not leak other `decided: user` entries."""
+        self._managed(tmp_path, 'one', {
+            'cards': [],
+            'excluded': [{'path': '../Keep.md', 'reason': 'ratified',
+                          'source_hash': 'sha256:z',
+                          'decided': 'user', 'decided_on': '2026-07-19'}],
+            'focus': [self._focus()],
+        })
+        assert run_decisions([str(tmp_path)]) == 0
+        out = capsys.readouterr().out
+        assert 'Keep.md' not in out
+        assert '../lecture.md' in out
+
+    def test_long_interest_is_truncated(self, tmp_path, capsys):
+        self._managed(tmp_path, 'one',
+                      {'cards': [], 'focus': [self._focus(interest='x' * 200)]})
+        assert run_decisions([str(tmp_path)]) == 0
+        out = capsys.readouterr().out
+        assert 'x' * 200 not in out
+        assert '…' in out
+
+    def test_missing_optional_fields_do_not_crash(self, tmp_path, capsys):
+        self._managed(tmp_path, 'one',
+                      {'cards': [], 'focus': [{'source': '../lecture.md'}]})
+        assert run_decisions([str(tmp_path)]) == 0
+        out = capsys.readouterr().out
+        assert 'no interest recorded' in out
+        assert 'floor: none' in out          # defaulted, not crashed
+
+    # --- R-FOCUS-TOOL-001 / R-FOCUS-DUR-005: manifest-sync round-trip ---
+
+    def test_manifest_sync_preserves_focus_verbatim(self, tmp_path, capsys):
+        d = _make_dir(tmp_path, {'lecture.md': 'A long lecture.\n'})
+        focus = self._focus()
+        (d / '.kb' / 'segmentation.yml').write_text(yaml.safe_dump(
+            {'version': 1, 'density': 'normal',
+             'focus': [focus],
+             'cards': [{'slug': 'lec', 'source': '../lecture.md',
+                        'source_hash': 'sha256:stale'}]}, sort_keys=False))
+        assert run_manifest_sync([str(d)]) == 0
+        seg = yaml.safe_load((d / '.kb' / 'segmentation.yml').read_text())
+        # the card's hash was refreshed ...
+        assert seg['cards'][0]['source_hash'] == _sha(d / 'lecture.md')
+        # ... but the focus directive came through byte-for-byte, and in
+        # particular grew no source_hash of its own (R-FOCUS-DUR-001).
+        assert seg['focus'] == [focus]
+        assert 'source_hash' not in seg['focus'][0]
+        out = capsys.readouterr().out
+        assert 'focus directives in effect: 1' in out
+
+    def test_focus_does_not_make_a_directory_stale(self, tmp_path):
+        """A focus is intra-file; staleness is file-granular (R-FOCUS-DUR-005)."""
+        d = _make_dir(tmp_path, {'lecture.md': 'A long lecture.\n'})
+        seg = {'focus': [self._focus()],
+               'cards': [{'slug': 'lec', 'source': '../lecture.md',
+                          'source_hash': _sha(d / 'lecture.md')}]}
+        delta = KnowledgebaseIndexer._dir_content_delta(seg, d / '.kb')
+        assert KnowledgebaseIndexer._delta_has_drift(delta) is False
+        assert delta['new'] == []

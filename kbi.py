@@ -1568,6 +1568,28 @@ def _compute_dir_hash(source_hashes: List[str]) -> str:
     return 'sha256:' + hashlib.sha256(blob.encode()).hexdigest()
 
 
+def _focus_detail(entry: Dict[str, Any], width: int = 60) -> str:
+    """One-line summary of a `focus` directive for the `kbi decisions` audit.
+
+    A focus directive is depth made non-uniform by semantic topic match rather
+    than by section name (R-FOCUS-MODEL-001).  Its `interest` prose is the
+    decision; `floor` says what the off-focus topics get (`none` = carried by
+    the file_summary card alone).
+    """
+    interest = ' '.join(str(entry.get('interest', '') or '').split())
+    if len(interest) > width:
+        interest = interest[:width - 1].rstrip() + '…'
+    floor = str(entry.get('floor', '') or 'none')
+    out = entry.get('resolved') or {}
+    n_in = len(out.get('in') or []) if isinstance(out, dict) else 0
+    n_out = len(out.get('out') or []) if isinstance(out, dict) else 0
+    bits = [f'focus "{interest}"' if interest else 'focus (no interest recorded)',
+            f'floor: {floor}']
+    if n_in or n_out:
+        bits.append(f'{n_in} in / {n_out} off-focus')
+    return '; '.join(bits)
+
+
 def run_manifest_sync(argv: List[str]) -> int:
     """`kbi manifest-sync [<dir>]` — mechanically refresh segmentation.yml hashes.
 
@@ -1577,6 +1599,9 @@ def run_manifest_sync(argv: List[str]) -> int:
     only — bare strings stay untracked), `dir_hash` on dir_summary entries
     (canonical formula: sha256 of the sorted unique source_hash values,
     newline-joined), `dir_fingerprint`, and the top-level `updated` date.
+
+    A `focus` directive holds no derivable field, so it is preserved verbatim
+    and only reported (R-FOCUS-TOOL-001).
 
     This RATIFIES current content as the decided state — /kb-card runs it as
     the last step of a successful pass, never to silence unreviewed drift.
@@ -1688,6 +1713,14 @@ def run_manifest_sync(argv: List[str]) -> int:
     print(f"  excluded entries updated: {stats['excluded']}")
     print(f"  dir_hash: {'changed' if dir_hash_changed else 'unchanged'}")
     print(f"  dir_fingerprint: {'refreshed' if new_fp != old_fp else 'unchanged'}")
+    # A focus directive holds no derivable field, so it is round-tripped
+    # verbatim by the load/dump above (R-FOCUS-TOOL-001); just report it, since
+    # it silently narrows card depth on every pass.
+    focus_entries = [e for e in (seg.get('focus') or []) if isinstance(e, dict)]
+    if focus_entries:
+        print(f"  focus directives in effect: {len(focus_entries)}")
+        for e in focus_entries:
+            print(f"    {e.get('source', '?')} — {_focus_detail(e)}")
     pending = [str(c.get('slug', '?')) for c in (seg.get('cards') or [])
                if str(c.get('status', '') or '') == 'pending']
     if pending:
@@ -1709,6 +1742,11 @@ def run_decisions(argv: List[str]) -> int:
     scrollback.  Accepting a decision is free (do nothing); to override,
     edit the manifest (or re-run /kb-card interactively), which flips the
     entry to `decided: user`.
+
+    `focus` directives (R-FOCUS-TOOL-002) are listed regardless of `decided:`.
+    A focus does not settle the way an exclusion does: it keeps narrowing card
+    depth on every subsequent pass until it is replaced or cleared, so it is
+    always relevant to an audit.
     """
     try:
         import yaml as _yaml
@@ -1722,18 +1760,20 @@ def run_decisions(argv: List[str]) -> int:
     parser.add_argument('root', nargs='?', default='.',
                         help='Tree to scan for managed directories (default: .)')
     parser.add_argument('--all', action='store_true',
-                        help='Include user-ratified decisions (decided: user) too')
+                        help='Include user-ratified decisions (decided: user) too '
+                             '(focus directives are always listed)')
     args = parser.parse_args(argv)
 
     rows: List[tuple] = []  # (decided_on, directory, kind, path, detail)
 
-    def note(directory: str, kind: str, entry: Dict[str, Any], detail: str) -> None:
+    def note(directory: str, kind: str, entry: Dict[str, Any], detail: str,
+             path_key: str = 'path', always: bool = False) -> None:
         decided = str(entry.get('decided', '') or '')
-        if decided != 'auto' and not (args.all and decided == 'user'):
+        if not always and decided != 'auto' and not (args.all and decided == 'user'):
             return
         rows.append((str(entry.get('decided_on', '') or ''), directory,
                      f"{kind}{'' if decided == 'auto' else ' (user)'}",
-                     str(entry.get('path', '') or ''), detail))
+                     str(entry.get(path_key, '') or ''), detail))
 
     root = Path(args.root).resolve()
     for dirpath, dirs, _files in os.walk(str(root)):
@@ -1749,6 +1789,13 @@ def run_decisions(argv: List[str]) -> int:
             if isinstance(entry, dict):
                 note(dirpath, 'excluded', entry,
                      str(entry.get('reason', '') or ''))
+        # Focus directives are ALWAYS listed, whatever their `decided:` value
+        # (R-FOCUS-TOOL-002): unlike an exclusion a focus never settles — it
+        # re-shapes depth on every subsequent pass, so it belongs in every audit.
+        for entry in (seg.get('focus') or []):
+            if isinstance(entry, dict):
+                note(dirpath, 'focus', entry, _focus_detail(entry),
+                     path_key='source', always=True)
         for card in (seg.get('cards') or []):
             for field in ('supersedes', 'exported_as'):
                 raw_list = card.get(field)
@@ -1768,9 +1815,15 @@ def run_decisions(argv: List[str]) -> int:
         detail_s = f" — {detail}" if detail else ''
         print(f"{date_s}  {kind:<12} {path}{detail_s}")
         print(f"{'':<12}in {directory}")
+    n_focus = sum(1 for r in rows if r[2].startswith('focus'))
     print(f"\n{len(rows)} decision{'s' if len(rows) != 1 else ''}. "
           "Accepting is free; to override, edit the manifest entry "
           "(set decided: user) or re-run /kb-card interactively.")
+    if n_focus:
+        noun = ('is a standing focus directive' if n_focus == 1
+                else 'are standing focus directives')
+        print(f"{n_focus} of these {noun} (listed on every audit — a focus keeps "
+              "narrowing card depth until /kb-card -no-focus or a replacing -focus).")
     return 0
 
 

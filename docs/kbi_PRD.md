@@ -281,6 +281,42 @@ Manifest field semantics: `docs/REFERENCE.md` §3; command behavior: §5.7–5.8
 - **R-UPD-HELP-002**: `kbi manifest-sync [<dir>]` recomputes all derivable manifest fields (card `source_hash`, hashed absorbed/excluded entries, `dir_hash` via the canonical sorted-unique-newline-joined formula, `dir_fingerprint`, `updated`) and reports what changed; it ratifies current content and is run only at the end of a successful `/kb-card` pass
 - **R-UPD-HELP-003**: `kbi decisions [<root>]` lists all `decided: auto` manifest entries under a tree, newest first (`--all` includes `decided: user`), as the audit trail for headless runs
 
+## 7. Card Focus (`-focus`) Requirements
+
+A **focus directive** makes a source's card density non-uniform by *topic* rather
+than by named section: card depth is spent where the author declared interest,
+and the rest of the source is carried by the file-summary card. It is the
+semantic counterpart of `density_overrides` (§3.1 of `docs/REFERENCE.md`), which
+selects by section name and so cannot be written before a long source has been
+segmented. Manifest field semantics: `docs/REFERENCE.md` §3.1; command behavior:
+§4.1–4.4.
+
+### 7.1 Directive Model
+- **R-FOCUS-MODEL-001**: A focus directive is a per-source entry under the manifest's top-level `focus:` key, carrying `source`, `interest` (free prose naming the area of interest), an in-focus `density`, an out-of-focus `floor`, `decided`/`decided_on`, and a `resolved:` record of the topics last judged in-focus and off-focus
+- **R-FOCUS-MODEL-002**: `floor` is `none | coarse | normal | fine | exhaustive` and defaults to `none` — off-focus topics get no card of their own and are carried by the file_summary card; a non-`none` floor authors off-focus cards at that (shallower) depth
+- **R-FOCUS-MODEL-003**: The in-focus `density` defaults to the source's ordinary effective density (`-density` flag → `kb.yml card_density` → `normal`); focus means "spend the normal depth here and none elsewhere", never an implicit depth increase
+- **R-FOCUS-MODEL-004**: Effective density precedence is `density_overrides` (explicit `(source, section)`) → focus in-focus/`floor` density → `-density` flag → `kb.yml card_density` → `normal`; a named-section override always wins over a focus directive because it is the more specific selector
+- **R-FOCUS-MODEL-005**: A focus directive selects topics **semantically** — matching each proposed topic against `interest` — never by section name, heading ordinal, or position, so it survives re-segmentation of the source
+- **R-FOCUS-MODEL-006**: A focus directive is per-source and lives only in `segmentation.yml`; it is never declared in `kb.yml`, which describes what an area *is* rather than what the author wants from one source
+
+### 7.2 Segmentation and Authoring
+- **R-FOCUS-SEG-001**: Segmentation of a focused source is two-pass — a coarse topic scan of the whole source (titles and signatures only, no distillation), then deep cuts only within topics matching `interest`; subsections of off-focus topics are never enumerated and their card bodies are never distilled
+- **R-FOCUS-SEG-002**: A focus directive forces `file_summary` **on** for that source and disables the N=1 short-circuit, so the source's overall message and full topic list are always captured even when the focus yields a single topic card
+- **R-FOCUS-SEG-003**: Every card authored from a focused source records `meta.focus: "<interest>"`, so a reader can tell the source was mined selectively and the card does not claim whole-source coverage
+- **R-FOCUS-SEG-004**: The review gate reports the focus in effect, the topics judged in-focus, and the topics judged off-focus, so narrowed depth is visible and correctable rather than silent
+- **R-FOCUS-SEG-005**: A focus directive is scoped to its `source`; it never narrows another source in the directory, and never narrows the breadth of the `dir_summary` card
+
+### 7.3 Durability and Reconcile
+- **R-FOCUS-DUR-001**: A focus directive records **no** `source_hash` and is deliberately **not** re-opened by content drift — unlike an `excluded:` entry it is a standing instruction, re-applied on every subsequent pass until explicitly changed
+- **R-FOCUS-DUR-002**: On reconcile of a drifted focused source, the stored `interest` is re-applied to the fresh topic proposal: a newly appeared topic that matches surfaces as **new** for normal review; one that does not is recorded in `resolved.out` without being surfaced
+- **R-FOCUS-DUR-003**: Because `file_summary` is forced on and regenerated from the whole source, a focus directive may make a topic shallower but must never drop it from the knowledge base entirely
+- **R-FOCUS-DUR-004**: `-resegment` re-proposes a focused source's boundaries but preserves its focus directive; only a replacing `-focus "<prose>"` or a clearing `-no-focus` changes it
+- **R-FOCUS-DUR-005**: A focus directive is intra-file and takes no part in staleness detection (§6.1), which is file-granular; when the focused source is deleted the directive is pruned at the next reconcile
+
+### 7.4 Tooling Obligations
+- **R-FOCUS-TOOL-001**: `kbi manifest-sync` preserves the `focus:` key verbatim — a focus directive holds no derivable field — and reports the number of directives in effect
+- **R-FOCUS-TOOL-002**: `kbi decisions` lists every focus directive regardless of its `decided:` value, because a focus keeps shaping every pass rather than settling once
+
 ---
 
 ## PART II: INFORMATIVE
