@@ -1840,7 +1840,21 @@ def main():
         return run_decisions(argv[1:])
 
     parser = argparse.ArgumentParser(
-        description="Generate navigational knowledge indexes for structured file collections (Freeplane .mm by default)",
+        usage='%(prog)s [options] [config]\n'
+              '       %(prog)s <command> [args]',
+        description="""\
+Generate navigational knowledge indexes for structured file collections (Freeplane .mm by default)
+
+commands:
+  search <config> PATTERN [args]   Grep just the files this config indexes
+                                   (ripgrep if available, else grep)
+  hash <file>...                   Print the canonical source_hash per file
+  manifest-sync [<dir>]            Refresh a .kb manifest's derivable fields
+  decisions [<root>]               Audit auto-made segmentation decisions
+
+  Each command takes its own --help (e.g. `kbi.py search --help`); with no
+  command, the arguments below generate an index. See docs/REFERENCE.md
+  §5.6–5.8.""",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
