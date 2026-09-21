@@ -72,8 +72,11 @@ Result: a visible transcript `sermons/<slug>.md` (the browsable, re-segmentable
 source) and a card `sermons/.kb/<slug>.kb.md` whose `source` lists the YouTube URL
 (to watch later) plus the local transcript. The video file itself is never kept.
 
-Transcript-only is the default and is right for spoken-word talks; a richer
-`-visual` capture for slide-heavy videos is planned but not yet available.
+For a spoken-word talk the transcript is the whole message, and that is all
+you get. When the video shows slides, code, or diagrams, `/kb-card` notices (it
+looks at a few frames first) and also captures what is on screen, merged into the
+transcript at the moment it appeared. `-no-visual` skips that for a faster run;
+`-visual` forces it if the detection missed.
 
 ### Capture only what you came for (`-focus`)
 

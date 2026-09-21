@@ -148,17 +148,21 @@ the card sidecars it in `.kb/`. Conventions:
 
 - `source` is a list: the **URL first** (canonical "dig deeper") and the **local
   capture** second (the analyzable basis used for `-resegment` and drift).
-- `meta.capture` records the capture method/fidelity: `transcript` (default) or
-  `transcript+visual` (planned).
+- `meta.capture` records the capture method/fidelity: `transcript` or
+  `transcript+visual`; with visuals, `meta.visual` records
+  `{frames_read, visuals, trigger}`.
 - Filename: a URL has no source stem, so the card and capture are named from the
   slug (e.g. a date-prefixed slug).
 
 The local capture is the *operational* source of truth (what tools read); the URL
-is the *canonical* original (human fallback). **Visual/multimodal capture**
-(`-visual`, producing `transcript+visual` = spoken text + OCR'd on-screen text +
-short visual descriptions) is **planned, not yet implemented**; transcript-only is
-the default, with a heuristic warning when a transcript references on-screen
-visuals. See `DESIGN_PRINCIPLES_AND_DECISIONS.md` (D15 / Addendum G).
+is the *canonical* original (human fallback). **Visual capture**
+(`transcript+visual` = spoken text + verbatim on-screen text + short visual
+descriptions, merged into the transcript at their timestamps) is **automatic**:
+`/kb-card` probes a few frames of the video and scans the transcript for
+on-screen references, and captures visuals when either shows the video carries
+content on screen. `-visual` forces it; `-no-visual` suppresses it. Frame
+selection is done by `~/.claude/bin/video-frames`. See
+`DESIGN_PRINCIPLES_AND_DECISIONS.md` (D15 / Addendum G).
 
 ```yaml
 # a captured talk
@@ -494,8 +498,10 @@ manual review. It does **not** run `kbi`.
 ```
 
 - `source` — file, directory, URL, or omitted (current directory). A URL is
-  captured to a local transcript first (see §1.6); `-visual` (planned) is rejected
-  until implemented.
+  captured to a local transcript first (see §1.6), with visuals when the video
+  shows content on screen.
+- `-visual` / `-no-visual` — force or suppress visual capture of a URL source
+  (normally decided automatically; see §1.6).
 - `-r` — recurse: author a card per unit across the tree.
 - `-plan` — propose/update `segmentation.yml` and **stop before authoring** —
   the review/adjustment gate.

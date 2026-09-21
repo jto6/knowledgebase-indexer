@@ -185,12 +185,13 @@ Each decision records the choice and why; supersessions are noted in the addenda
   (the analyzable basis for `-resegment` / drift). Two tiers of truth: the local
   capture is the *operational* source of truth (what every automated step reads);
   the URL is the *canonical* original (human/Claude fallback). Fidelity is
-  recorded in `meta.capture` (e.g. `transcript`). Visual/multimodal capture
-  (`transcript+visual`) is **opt-in and deferred** — expensive, requires the
-  video, and only enriches the same local text artifact, so it needs no
-  architectural change; a cheap transcript-reference heuristic warns when a
-  transcript-only capture is likely lossy. (P1, P3, P5) — see Addendum G; this
-  also absorbs the residual `/kb-import` role (D11, Addendum D).
+  recorded in `meta.capture` (`transcript` or `transcript+visual`). Visual
+  capture is **automatic**: a cheap probe of a few frames plus a scan for
+  on-screen references decides whether the video carries content on screen;
+  `-visual`/`-no-visual` override. It only enriches the same local text
+  artifact, so it needed no architectural change. (P1, P3, P5) — see Addendum G
+  (amended 2026-09-20); this also absorbs the residual `/kb-import` role (D11,
+  Addendum D).
 - **D16 — `output.format` selects only serialization; the model is one superset,
   partitioned by domain.** Handlers populate a single render-independent model
   (the superset of what they can encode); a renderer emits *every* non-empty,
@@ -747,15 +748,28 @@ retained in `source` as the canonical original (the real fallback), and
 `meta.capture` records the fidelity. So there are two tiers — the local capture is
 the *operational* source of truth; the URL/video is the *canonical* one.
 
-Visual richness cannot be detected cheaply (knowing requires looking at the video,
-~as costly as processing it), so the system never auto-decides: default is
-transcript-only, and a cheap scan of the transcript for visual-reference phrases
-("as you can see on this slide…") *warns* when transcript-only is likely lossy.
-Higher-fidelity **visual/multimodal capture** (`transcript+visual` = spoken text +
-OCR'd on-screen text + short visual descriptions) is **opt-in (`-visual`) and
-documented-but-deferred**. Crucially it changes nothing architecturally — it only
-produces a richer *local text* capture, so distill/reconcile are unaffected and
-the implementation can be slotted in later. Keeping the capture visible and
+Higher-fidelity **visual capture** (`transcript+visual` = spoken text + verbatim
+on-screen text + short visual descriptions) changes nothing architecturally: it
+only produces a richer *local text* capture, so distill/reconcile are unaffected.
+
+*Original decision:* visual richness was assumed not to be detectable cheaply
+(knowing requires looking at the video, ~as costly as processing it), so the
+system would never auto-decide: transcript-only by default, a warning from a
+scan for visual-reference phrases ("as you can see on this slide…"), and an
+opt-in `-visual`.
+
+*Amended 2026-09-20:* the premise was wrong. Looking at *a few* frames is cheap:
+`video-frames probe` seeks the remote stream for ~8 evenly spaced low-res frames
+(seconds, no download), and a handful of images tells a slide talk from a
+talking head. Since the check is cheap, a flag the user must remember to pass is
+the weaker design, so capture is now automatic: it runs when two or more probe
+frames show content (slides, code, diagrams) or the transcript references the
+screen. The phrase scan remains, both as a second trigger (a mostly talking-head
+video can still show one critical slide) and to place forced frames at the
+moments referenced. `-visual` and `-no-visual` remain as overrides for a
+detection miss and for a fast, cheap run. The expensive part (download, one
+frame per distinct visual, reading each frame) runs only after the probe says
+it is worth it. Keeping the capture visible and
 editable is also a feature: messy auto-transcripts can be cleaned, then re-distilled.
 
 This capture role is the residual purpose previously earmarked for `/kb-import`
