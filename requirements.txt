@@ -1,3 +1,5 @@
+# Keep in sync with the inline '# /// script' headers in kbi.py,
+# doc_to_markdown.py and run_tests.py (see README, Installation).
 PyYAML>=6.0
 jsonschema>=4.0
 requests>=2.31.0

@@ -19,15 +19,13 @@ A Python implementation of the Knowledgebase Indexer that builds navigational in
 
 ## Installation
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+kbi requires [uv](https://docs.astral.sh/uv/getting-started/installation/) as a system prerequisite. There is no per-checkout install step.
 
-2. Make the script executable:
-```bash
-chmod +x mmdir.py
-```
+`kbi.py`, `run_tests.py` and `doc_to_markdown.py` declare their dependencies inline (a PEP 723 `# /// script` header) and use the shebang `#!/usr/bin/env -S uv run --script`. Running one directly makes uv build a matching isolated environment on first use, cache it, and run the script in it. Your shell and any active virtual environment are left alone.
+
+Run the scripts directly (`./kbi.py ...` or `~/dev/kbi/kbi.py ...`). `./kbi.py` bypasses the shebang and therefore uv, and fails unless that interpreter happens to have the dependencies.
+
+When changing dependencies, update the script headers and `requirements.txt` together. The Makefile's pytest and lint targets use `requirements.txt`.
 
 ## Usage
 
@@ -35,13 +33,13 @@ chmod +x mmdir.py
 
 ```bash
 # Generate an index from a config file (required positional argument)
-python3 kbi.py configs/myconfig.yml
+./kbi.py configs/myconfig.yml
 
 # Enable debug output
-python3 kbi.py configs/myconfig.yml --debug
+./kbi.py configs/myconfig.yml --debug
 
 # Specify output file
-python3 kbi.py configs/myconfig.yml --output my_index.mm
+./kbi.py configs/myconfig.yml --output my_index.mm
 ```
 
 ### Refreshing knowledge cards (`--update-cards`)
@@ -51,10 +49,10 @@ python3 kbi.py configs/myconfig.yml --output my_index.mm
 # (.kb/segmentation.yml), computes a per-directory content delta, and hands
 # it to `claude -p '/kb-card --delta <file>'` for each stale directory.
 # Successful refreshes in git repositories auto-commit only the .kb/ paths.
-python3 kbi.py configs/myconfig.yml --update-cards
+./kbi.py configs/myconfig.yml --update-cards
 
 # Same, without the .kb auto-commits
-python3 kbi.py configs/myconfig.yml --update-cards --no-commit
+./kbi.py configs/myconfig.yml --update-cards --no-commit
 ```
 
 See `docs/REFERENCE.md` §5.7 for the staleness rules and delta format, and
@@ -64,17 +62,17 @@ See `docs/REFERENCE.md` §5.7 for the staleness rules and delta format, and
 
 ```bash
 # Search exactly the files an index config covers (ripgrep, else grep)
-python3 kbi.py search configs/myconfig.yml "<regex>" -i
+./kbi.py search configs/myconfig.yml "<regex>" -i
 
 # Canonical source_hash (sha256 of raw bytes) per file
-python3 kbi.py hash <file>...
+./kbi.py hash <file>...
 
 # Mechanically refresh a .kb/segmentation.yml manifest's derivable fields
 # (source_hash values, dir_hash, dir_fingerprint, updated)
-python3 kbi.py manifest-sync [<dir>]
+./kbi.py manifest-sync [<dir>]
 
 # Audit segmentation decisions made headlessly by --update-cards runs
-python3 kbi.py decisions [<root>]
+./kbi.py decisions [<root>]
 ```
 
 ### Sample Files
@@ -83,10 +81,10 @@ Generate sample configuration and keyword files:
 
 ```bash
 # Create sample configuration
-python3 kbi.py --sample-config
+./kbi.py --sample-config
 
 # Create sample keyword file
-python3 kbi.py --sample-keywords
+./kbi.py --sample-keywords
 ```
 
 ## Configuration
@@ -183,11 +181,11 @@ Produces a render-independent index model, emitted as a Freeplane `.mm` mind map
 
 Process markdown and mind map files in current directory:
 ```bash
-python3 kbi.py --debug
+./kbi.py --debug
 ```
 
 Generate index with custom keyword searches:
 ```bash
 echo -e "Documentation\n\tAPI\n\t\tapi:reference\n\tGuides\n\t\ttutorial:beginner" > configs/keywords.txt
-python3 kbi.py --debug
+./kbi.py --debug
 ```

@@ -3,14 +3,19 @@
 
 .PHONY: help install test test-quick test-unit test-integration test-all test-coverage clean lint format check docs
 
+# Everything runs through uv (a system prerequisite; see README), which
+# builds and caches isolated environments on demand.
+UVRUN  := uv run --no-project --with-requirements requirements.txt
+PYTEST := $(UVRUN) --with pytest --with pytest-cov pytest
+
 # Default target
 help:
 	@echo "Knowledgebase Indexer - Available Commands"
 	@echo "=================================="
 	@echo ""
 	@echo "Setup and Installation:"
-	@echo "  install        - Install dependencies and set up development environment"
-	@echo "  install-dev    - Install additional development dependencies"
+	@echo "  install        - Check for uv and pre-build the runtime environments"
+	@echo "  install-dev    - Also pre-build the test environment"
 	@echo ""
 	@echo "Testing:"
 	@echo "  test-quick     - Run quick commit tests (< 30 seconds)"
@@ -36,76 +41,75 @@ help:
 
 # Installation and setup
 install:
-	@echo "Installing dependencies..."
-	pip install -r requirements.txt
-	@echo "✅ Dependencies installed successfully"
+	@command -v uv >/dev/null || { echo "uv not found: https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
+	./kbi.py --help >/dev/null
+	@echo "✅ kbi environment ready"
 
 install-dev: install
-	@echo "Installing development dependencies..."
-	pip install pytest pytest-cov black isort flake8 pylint mypy
-	@echo "✅ Development dependencies installed"
+	./run_tests.py --help >/dev/null
+	@echo "✅ Test environment ready"
 
 # Testing commands
 test-quick:
 	@echo "Running quick commit tests..."
-	python run_tests.py quick
+	./run_tests.py quick
 
 test-unit:
 	@echo "Running unit tests..."
-	python run_tests.py unit
+	./run_tests.py unit
 
 test-integration:
 	@echo "Running integration tests..."
-	python run_tests.py integration
+	./run_tests.py integration
 
 test-all:
 	@echo "Running complete test suite..."
-	python run_tests.py all
+	./run_tests.py all
 
 test-coverage:
 	@echo "Running tests with coverage reporting..."
-	python run_tests.py coverage
+	./run_tests.py coverage
 
 # Alternative pytest commands for more control
 pytest-quick:
-	pytest tests/test_quick_commit.py -v -m quick
+	$(PYTEST) tests/test_quick_commit.py -v -m quick
 
 pytest-unit:
-	pytest tests/unit/ -v -m "not slow"
+	$(PYTEST) tests/unit/ -v -m "not slow"
 
 pytest-integration:  
-	pytest tests/integration/ -v -m "slow or integration"
+	$(PYTEST) tests/integration/ -v -m "slow or integration"
 
 pytest-all:
-	pytest tests/ -v
+	$(PYTEST) tests/ -v
 
 pytest-debug:
-	pytest tests/ -v -s --tb=long --log-cli-level=DEBUG
+	$(PYTEST) tests/ -v -s --tb=long --log-cli-level=DEBUG
 
 # Code quality
 lint:
 	@echo "Running linting checks..."
 	@echo "Checking with flake8..."
-	flake8 --max-line-length=100 --extend-ignore=E203,W503 *.py handlers/ tests/
+	uvx flake8 --max-line-length=100 --extend-ignore=E203,W503 *.py handlers/ tests/
 	@echo "Checking with pylint..."
-	-pylint *.py handlers/
+	-$(UVRUN) --with pylint pylint *.py handlers/
 	@echo "✅ Linting complete"
 
 format:
 	@echo "Formatting code..."
-	black --line-length=100 *.py handlers/ tests/
-	isort --profile black --line-length=100 *.py handlers/ tests/
+	uvx black --line-length=100 *.py handlers/ tests/
+	uvx isort --profile black --line-length=100 *.py handlers/ tests/
 	@echo "✅ Code formatted"
 
 format-check:
 	@echo "Checking code formatting..."
-	black --check --line-length=100 *.py handlers/ tests/
-	isort --check-only --profile black --line-length=100 *.py handlers/ tests/
+	uvx black --check --line-length=100 *.py handlers/ tests/
+	uvx isort --check-only --profile black --line-length=100 *.py handlers/ tests/
 	@echo "✅ Code formatting check complete"
 
 type-check:
 	@echo "Running type checking..."
-	mypy *.py handlers/ --ignore-missing-imports
+	$(UVRUN) --with mypy mypy *.py handlers/ --ignore-missing-imports
 	@echo "✅ Type checking complete"
 
 check: format-check lint type-check
@@ -126,8 +130,8 @@ docs-serve:
 sample-files:
 	@echo "Generating sample files..."
 	mkdir -p configs
-	python kbi.py --sample-config
-	python kbi.py --sample-keywords
+	./kbi.py --sample-config
+	./kbi.py --sample-keywords
 	@echo "✅ Sample files generated"
 
 # Demonstration and examples
@@ -136,21 +140,20 @@ demo:
 	@echo "1. Generating sample files..."
 	$(MAKE) sample-files
 	@echo "2. Running index generation with debug output..."
-	python kbi.py --debug
+	./kbi.py --debug
 	@echo "✅ Demonstration complete"
 
 # Performance testing
 benchmark:
 	@echo "Running performance benchmarks..."
-	python -m pytest tests/ -m "not slow" --durations=0
+	$(PYTEST) tests/ -m "not slow" --durations=0
 	@echo "✅ Benchmark complete"
 
 # Security scanning
 security-check:
 	@echo "Running security checks..."
-	pip install safety bandit
-	safety check
-	bandit -r *.py handlers/
+	uvx safety check
+	uvx bandit -r *.py handlers/
 	@echo "✅ Security check complete"
 
 # Maintenance and cleanup

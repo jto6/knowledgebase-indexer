@@ -1,4 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#   "requests>=2.31.0",
+# ]
+# ///
 """
 Document to Markdown Converter
 
@@ -6,7 +12,7 @@ Uploads PDF, Word, or PowerPoint files to Claude.ai and converts them to rich ma
 format optimized for later analysis and question answering with Claude Code.
 
 Usage:
-    python3 doc_to_markdown.py <file_path> [--output <output_path>] [--api-key <key>]
+    ./doc_to_markdown.py <file_path> [--output <output_path>] [--api-key <key>]
 
 Environment Variables:
     ANTHROPIC_API_KEY: Your Anthropic API key (required if not passed via --api-key)
@@ -226,9 +232,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python3 doc_to_markdown.py document.pdf
-    python3 doc_to_markdown.py presentation.pptx --output my_notes.md
-    python3 doc_to_markdown.py report.docx --api-key sk-ant-xxxxx
+    ./doc_to_markdown.py document.pdf
+    ./doc_to_markdown.py presentation.pptx --output my_notes.md
+    ./doc_to_markdown.py report.docx --api-key sk-ant-xxxxx
         """
     )
     

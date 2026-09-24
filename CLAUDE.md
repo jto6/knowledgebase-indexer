@@ -59,36 +59,39 @@ The system follows a modular design with clear separation of concerns:
 
 ## Common Commands
 
+Requires uv (system prerequisite). Run scripts directly so their
+`uv run --script` shebang supplies the dependencies; `./kbi.py` bypasses it.
+
 ```bash
 # Generate an index (config is a required positional argument)
-python3 kbi.py configs/myconfig.yml
+./kbi.py configs/myconfig.yml
 
 # Enable debug output
-python3 kbi.py configs/myconfig.yml --debug
+./kbi.py configs/myconfig.yml --debug
 
 # Specify output file
-python3 kbi.py configs/myconfig.yml --output my_index.mm
+./kbi.py configs/myconfig.yml --output my_index.mm
 
 # Refresh stale card sets first (delta handoff to /kb-card; auto-commits
 # .kb/ changes in git repos — suppress with --no-commit)
-python3 kbi.py configs/myconfig.yml --update-cards
+./kbi.py configs/myconfig.yml --update-cards
 
 # Helper subcommands (see docs/REFERENCE.md §5.6–5.8)
-python3 kbi.py search configs/myconfig.yml "<regex>" -i
-python3 kbi.py hash <file>...          # canonical source_hash per file
-python3 kbi.py manifest-sync [<dir>]   # refresh manifest hashes/fingerprint
-python3 kbi.py decisions [<root>]      # audit auto-made segmentation decisions
+./kbi.py search configs/myconfig.yml "<regex>" -i
+./kbi.py hash <file>...          # canonical source_hash per file
+./kbi.py manifest-sync [<dir>]   # refresh manifest hashes/fingerprint
+./kbi.py decisions [<root>]      # audit auto-made segmentation decisions
 
 # Generate sample files
-python3 kbi.py --sample-config
-python3 kbi.py --sample-keywords
+./kbi.py --sample-config
+./kbi.py --sample-keywords
 ```
 
 ## Testing
 
 Always test changes with:
 ```bash
-python3 kbi.py --debug
+./kbi.py --debug
 ```
 
 ## Directory Structure

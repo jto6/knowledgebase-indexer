@@ -1,4 +1,15 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#   "PyYAML>=6.0",
+#   "jsonschema>=4.0",
+#   "requests>=2.31.0",
+#   "pytest",
+#   "pytest-cov",
+#   "coverage",
+# ]
+# ///
 """
 Test runner script for Knowledgebase Indexer tests.
 
@@ -93,7 +104,7 @@ def run_tests_with_coverage():
 
 def check_dependencies():
     """Check that required test dependencies are available."""
-    required_packages = ["pytest", "pyyaml", "jsonschema"]
+    required_packages = ["pytest", "yaml", "jsonschema"]  # import names
     missing_packages = []
     
     for package in required_packages:
@@ -104,7 +115,7 @@ def check_dependencies():
     
     if missing_packages:
         print(f"Missing required packages: {', '.join(missing_packages)}")
-        print("Install with: pip install -r requirements.txt")
+        print("Run it directly (./run_tests.py) so uv supplies them; see README.")
         return False
     
     return True

@@ -1,4 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#   "PyYAML>=6.0",
+#   "jsonschema>=4.0",
+# ]
+# ///
 """
 Knowledgebase Indexer - Builds navigational indexes over structured file collections.
 

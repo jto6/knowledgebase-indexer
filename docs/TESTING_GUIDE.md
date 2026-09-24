@@ -5,6 +5,7 @@ This guide provides comprehensive information about the testing infrastructure a
 ## Overview
 
 The testing framework is designed around three primary categories:
+
 - **Quick Commit Tests**: Fast feedback for development (~30 seconds)
 - **Unit Tests**: Component-level testing (~2 minutes)  
 - **Integration Tests**: Full workflow testing (~5 minutes)
@@ -93,6 +94,7 @@ pytest --cov=. --cov-report=html tests/
 **Purpose**: Rapid feedback during development
 **Duration**: < 30 seconds
 **Use Cases**:
+
 - Pre-commit hooks
 - Continuous development feedback
 - Basic functionality verification
@@ -112,6 +114,7 @@ def test_config_loading_basic():
 **Purpose**: Component-level testing in isolation
 **Duration**: < 2 minutes total
 **Use Cases**:
+
 - Individual class/function testing
 - Error condition testing
 - Edge case verification
@@ -132,6 +135,7 @@ class TestHierarchicalNode:
 **Purpose**: Full workflow and system integration testing
 **Duration**: < 5 minutes total
 **Use Cases**:
+
 - End-to-end workflow testing
 - Multi-component interaction testing
 - File system integration
@@ -214,6 +218,7 @@ pytest tests/unit/test_search.py::TestSearchEngine::test_complex_search -v -s --
 
 ### Test Log Files
 Each test run creates a log file in `/tmp/` with detailed debugging information:
+
 - File: `/tmp/mmdir_debug_YYYYMMDD_HHMMSS_PID.log`
 - Contains: Full debug traces, algorithm steps, performance metrics
 - Usage: For post-test analysis and debugging
@@ -342,11 +347,9 @@ make clean
 
 #### Dependency Issues  
 ```bash
-# Reinstall test dependencies
-make install-dev
-
-# Check package versions
-pip list | grep -E "(pytest|pyyaml|jsonschema)"
+# Test dependencies come from run_tests.py's inline header, via uv;
+# rebuild its cached environment with:
+uv run --script --refresh run_tests.py --help
 ```
 
 ## Best Practices
