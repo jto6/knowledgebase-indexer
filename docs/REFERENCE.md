@@ -708,6 +708,10 @@ missing parent directories in `PATH`.
   **built-in** types to index. The built-in types are `card` (`.kb.md`),
   `markdown` (`.md`/`.markdown`), and `freeplane` (`.mm`). Handlers are built in;
   the config only includes/excludes them by name. Omit `types` to index all.
+- `update_cards.ignore_unmanaged` — optional list of paths or globs (`~`
+  expanded) left out of the `--update-cards` unmanaged-directory report (§5.7),
+  e.g. code checkouts that will never get cards. Affects only the report, not
+  what is indexed.
 
 ### 5.2 Scoping via `types`
 
@@ -897,8 +901,38 @@ Nothing is ever pushed. Opt out per run with `--no-commit`, or per area with
 `update_commit: false` in the nearest `.kb/kb.yml`.
 
 If `--update-cards` is combined with a normal index run, the refresh pass runs first.
-A directory without a `segmentation.yml` (no cards authored yet) is skipped —
+A directory without a `segmentation.yml` (no cards authored yet) is not refreshed:
 `--update-cards` updates existing card sets; it does not bootstrap new areas.
+
+**Unmanaged-directory report.** After the managed scan, `--update-cards` lists
+unmanaged directories that hold card sources, so areas needing a first
+`/kb-card` run are visible:
+
+- Only directories the config would index are visited (include roots, minus
+  `directories.exclude` and hidden directories).
+- Card sources are `.md`, `.markdown` and `.mm` files, minus `*.kb.md` cards and
+  the built-in source excludes (`CLAUDE.md`, `*.mm.md`, `*.conflict*`). Binary
+  formats (`.pdf`, `.docx`, `.pptx`) are not counted.
+- A fully unmanaged subtree is listed once, at its top: the directory whose
+  parent is managed, is an include root, or is unmanaged but has a managed
+  descendant. Its count covers the whole subtree. For example, if
+  `tech-research/` is unmanaged but `tech-research/sdsi/` is managed,
+  `tech-research/debian/` is listed rather than `tech-research/`.
+- An unmanaged directory that is not listed that way (an include root, or one
+  with a managed descendant) but holds card sources itself is listed with those
+  files alone, marked `(files in this directory only)`.
+- Directories with a managed ancestor are listed first, then the rest; each
+  group is sorted by source count, descending.
+- `update_cards.ignore_unmanaged` in the config (§5.1) silences directories that
+  will never get cards, such as code checkouts.
+
+```
+--update-cards: 2 unmanaged directories under managed areas (source files; run /kb-card to bootstrap):
+  269  /home/jon/dev/advisor/council-meetings
+    5  /home/jon/dev/research/tech-research/debian
+--update-cards: 1 other unmanaged directory (source files; silence with update_cards.ignore_unmanaged):
+  27  /home/jon/dev/research/competitive-analysis
+```
 
 **Note:** `claude -p /kb-card` uses the slow path (Claude CLI). On large trees
 with many stale directories, this can be slow. `--update-cards` is intended for

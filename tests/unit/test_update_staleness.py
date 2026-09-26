@@ -642,3 +642,93 @@ class TestFocusDirectives:
         delta = KnowledgebaseIndexer._dir_content_delta(seg, d / '.kb')
         assert KnowledgebaseIndexer._delta_has_drift(delta) is False
         assert delta['new'] == []
+
+
+def _tree(root: Path, spec: dict) -> None:
+    """Create files under root; a path ending in '/.kb' marks it managed."""
+    for rel, content in spec.items():
+        p = root / rel
+        if rel.endswith('.kb'):
+            p.mkdir(parents=True, exist_ok=True)
+            (p / 'segmentation.yml').write_text('cards: []\n')
+            continue
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content)
+
+
+def _scan(root: Path, **extra):
+    cfg = {'directories': {'include': [str(root)],
+                           'exclude': extra.pop('exclude', [])}}
+    cfg.update(extra)
+    ix = KnowledgebaseIndexer.__new__(KnowledgebaseIndexer)
+    return ix._scan_unmanaged_directories(cfg)
+
+
+@pytest.mark.quick
+class TestUnmanagedScan:
+    """Unmanaged-directory report for --update-cards."""
+
+    def test_unmanaged_child_of_managed_is_priority(self, tmp_path):
+        _tree(tmp_path, {'area/.kb': '', 'area/a.md': 'x',
+                         'area/debian/primer.md': 'x'})
+        under, other = _scan(tmp_path)
+        assert under == [(str(tmp_path / 'area' / 'debian'), 1, False)]
+        assert other == []
+
+    def test_unmanaged_chain_reported_at_top(self, tmp_path):
+        _tree(tmp_path, {'advisor/.kb': '',
+                         'advisor/council/sessions/2026/a/n.md': 'x',
+                         'advisor/council/sessions/2026/b/n.md': 'x',
+                         'advisor/council/planning/n.mm': 'x'})
+        under, _ = _scan(tmp_path)
+        assert under == [(str(tmp_path / 'advisor' / 'council'), 3, False)]
+
+    def test_descends_past_partially_managed_parent(self, tmp_path):
+        # tech-research unmanaged but sdsi managed: debian is listed itself.
+        _tree(tmp_path, {'tech-research/sdsi/.kb': '',
+                         'tech-research/sdsi/s.md': 'x',
+                         'tech-research/debian/d.md': 'x'})
+        under, other = _scan(tmp_path)
+        assert under == []
+        assert other == [(str(tmp_path / 'tech-research' / 'debian'), 1, False)]
+
+    def test_partially_managed_dir_own_files_reported(self, tmp_path):
+        _tree(tmp_path, {'maps/PersDev/.kb': '', 'maps/Top.mm': 'x',
+                         'maps/Other.mm': 'x'})
+        _, other = _scan(tmp_path)
+        assert other == [(str(tmp_path / 'maps'), 2, True)]
+
+    def test_include_root_children_listed_not_root(self, tmp_path):
+        _tree(tmp_path, {'README.md': 'x', 'a/x.md': 'x', 'b/c/y.md': 'x'})
+        _, other = _scan(tmp_path)
+        assert (str(tmp_path / 'a'), 1, False) in other
+        assert (str(tmp_path / 'b'), 1, False) in other
+        assert (str(tmp_path), 1, True) in other
+
+    def test_excluded_and_hidden_dirs_not_visited(self, tmp_path):
+        _tree(tmp_path, {'build/n.md': 'x', 'node_modules/p/n.md': 'x',
+                         '.hidden/n.md': 'x'})
+        under, other = _scan(tmp_path, exclude=['**/build/**',
+                                                '**/node_modules/**'])
+        assert under == [] and other == []
+
+    def test_ignore_unmanaged_paths_and_globs(self, tmp_path):
+        _tree(tmp_path, {'yocto/a/n.md': 'x', 'aosp/n.md': 'x',
+                         'notes/n.md': 'x'})
+        _, other = _scan(tmp_path, update_cards={'ignore_unmanaged': [
+            str(tmp_path / 'yocto'), str(tmp_path / 'ao*')]})
+        assert other == [(str(tmp_path / 'notes'), 1, False)]
+
+    def test_only_card_sources_counted(self, tmp_path):
+        _tree(tmp_path, {'d/CLAUDE.md': 'x', 'd/x.mm.md': 'x',
+                         'd/y.kb.md': 'x', 'd/z.pdf': 'x', 'd/w.py': 'x',
+                         'd/f.conflict1.mm': 'x', 'e/real.markdown': 'x'})
+        _, other = _scan(tmp_path)
+        assert other == [(str(tmp_path / 'e'), 1, False)]
+
+    def test_sorted_by_count_descending(self, tmp_path):
+        _tree(tmp_path, {'small/a.md': 'x',
+                         'big/a.md': 'x', 'big/b.md': 'x', 'big/c.md': 'x'})
+        _, other = _scan(tmp_path)
+        assert [e[0] for e in other] == [str(tmp_path / 'big'),
+                                         str(tmp_path / 'small')]

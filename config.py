@@ -138,4 +138,8 @@ class ConfigLoader:
         if "types" in config:
             merged["types"] = config["types"]
 
+        # `update_cards` tunes the --update-cards pass (e.g. ignore_unmanaged).
+        if "update_cards" in config:
+            merged["update_cards"] = config["update_cards"]
+
         return merged

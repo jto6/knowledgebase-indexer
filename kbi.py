@@ -128,6 +128,21 @@ class KnowledgebaseIndexer:
                 return handler_registry.get_handler(handler_name, {'extensions': exts})
         return None
 
+    @staticmethod
+    def _path_excluded(path_str: str, exclude_patterns: List[str]) -> bool:
+        """Check if a path matches any `directories.exclude` pattern."""
+        for pattern in exclude_patterns:
+            # Handle ** patterns by converting to fnmatch-style
+            if '**' in pattern:
+                # Extract the directory name to exclude (e.g., "node_modules" from "**/node_modules/**")
+                parts = pattern.strip('*').strip('/').split('/')
+                for part in parts:
+                    if part and part in path_str.split(os.sep):
+                        return True
+            elif fnmatch.fnmatch(path_str, pattern):
+                return True
+        return False
+
     def discover_files(self) -> List[str]:
         """Discover files in directories matching glob patterns, filtered to enabled built-in types.
 
@@ -172,20 +187,8 @@ class KnowledgebaseIndexer:
 
             self.logger.info(f"Scanning {len(include_directories)} root directories")
 
-            # Helper function to check if a path matches any exclude pattern
             def is_excluded(path_str: str) -> bool:
-                """Check if a path matches any exclude pattern."""
-                for pattern in exclude_dir_patterns:
-                    # Handle ** patterns by converting to fnmatch-style
-                    if '**' in pattern:
-                        # Extract the directory name to exclude (e.g., "node_modules" from "**/node_modules/**")
-                        parts = pattern.strip('*').strip('/').split('/')
-                        for part in parts:
-                            if part and part in path_str.split(os.sep):
-                                return True
-                    elif fnmatch.fnmatch(path_str, pattern):
-                        return True
-                return False
+                return self._path_excluded(path_str, exclude_dir_patterns)
 
             # Walk directories and collect files with early pruning
             all_files = set()
@@ -819,6 +822,150 @@ class KnowledgebaseIndexer:
 
         return stale, current_count
 
+    # Card-source extensions counted by the unmanaged-directory report.  Only
+    # text sources /kb-card distills directly; binary formats (.pdf, .docx,
+    # .pptx) are left out because they flood the report from code checkouts.
+    _UNMANAGED_SOURCE_EXTS = ('.md', '.markdown', '.mm')
+
+    @staticmethod
+    def _count_card_sources(filenames: List[str]) -> int:
+        """Count files that /kb-card would treat as sources (not cards)."""
+        n = 0
+        for name in filenames:
+            if name.startswith('.') or name.endswith('.kb.md'):
+                continue
+            if not name.lower().endswith(KnowledgebaseIndexer._UNMANAGED_SOURCE_EXTS):
+                continue
+            if any(fnmatch.fnmatch(name, pat) for pat in _DEFAULT_SOURCE_EXCLUDE):
+                continue
+            n += 1
+        return n
+
+    def _scan_unmanaged_directories(self, config: Dict[str, Any]) -> tuple:
+        """Return (under_managed, elsewhere) lists of unmanaged directories.
+
+        Implements R-UPD-UNMG-001..005 (docs/kbi_PRD.md §6.5).
+
+        Walks the same tree the indexer would visit (include roots, minus
+        `directories.exclude` and hidden directories, minus the report-only
+        `update_cards.ignore_unmanaged` paths).  Each entry is a
+        (abs_path_str, source_count, own_only) tuple, sorted by count
+        descending:
+
+          - A fully unmanaged subtree (no `.kb/segmentation.yml` anywhere in
+            it) holding card sources is reported once, at its top: the
+            directory whose parent is managed, is an include root, or is
+            unmanaged but has a managed descendant.  source_count covers the
+            whole subtree; own_only is False.
+          - An unmanaged directory that is not reported that way (an include
+            root, or a directory with a managed descendant) but holds card
+            sources directly is reported for those files alone; own_only is
+            True.
+
+        under_managed holds entries with a managed ancestor; elsewhere the
+        rest.
+        """
+        dirs_cfg = config.get('directories', {}) or {}
+        include_dirs = dirs_cfg.get('include', ['.']) or ['.']
+        exclude_patterns = dirs_cfg.get('exclude', []) or []
+        ignore_raw = ((config.get('update_cards') or {})
+                      .get('ignore_unmanaged') or [])
+        ignore_paths = []
+        ignore_globs = []
+        for entry in ignore_raw:
+            expanded = os.path.expanduser(str(entry))
+            if any(c in expanded for c in '*?['):
+                ignore_globs.append(expanded)
+            else:
+                ignore_paths.append(str(Path(expanded).resolve()))
+
+        def ignored(path_str: str) -> bool:
+            for ip in ignore_paths:
+                if path_str == ip or path_str.startswith(ip + os.sep):
+                    return True
+            return any(fnmatch.fnmatch(path_str, g) for g in ignore_globs)
+
+        under: list = []
+        elsewhere: list = []
+        seen_roots: set = set()
+
+        for inc in include_dirs:
+            root = str(Path(inc).expanduser().resolve())
+            if root in seen_roots or not os.path.isdir(root) or ignored(root):
+                continue
+            seen_roots.add(root)
+
+            # One top-down walk records each directory; processing the list
+            # in reverse visits children before parents for the aggregation.
+            managed: Dict[str, bool] = {}
+            own: Dict[str, int] = {}
+            children: Dict[str, List[str]] = {}
+            order: List[str] = []
+            for dirpath, dirnames, filenames in os.walk(root):
+                dirnames[:] = sorted(
+                    d for d in dirnames
+                    if not d.startswith('.')
+                    and not self._path_excluded(os.path.join(dirpath, d),
+                                                exclude_patterns)
+                    and not ignored(os.path.join(dirpath, d)))
+                is_managed = os.path.isfile(
+                    os.path.join(dirpath, '.kb', 'segmentation.yml'))
+                managed[dirpath] = is_managed
+                own[dirpath] = 0 if is_managed else self._count_card_sources(filenames)
+                children[dirpath] = [os.path.join(dirpath, d) for d in dirnames]
+                order.append(dirpath)
+
+            has_managed: Dict[str, bool] = {}
+            total: Dict[str, int] = {}
+            for d in reversed(order):
+                kids = [k for k in children[d] if k in managed]
+                has_managed[d] = managed[d] or any(has_managed[k] for k in kids)
+                total[d] = own[d] + sum(total[k] for k in kids)
+
+            # Report pass: descend through managed directories and through
+            # unmanaged directories that still contain a managed descendant;
+            # stop at the top of each fully unmanaged subtree.
+            stack = [(root, False)]
+            while stack:
+                d, anc_managed = stack.pop()
+                kids = [k for k in children[d] if k in managed]
+                if managed[d]:
+                    stack.extend((k, True) for k in kids)
+                    continue
+                bucket = under if anc_managed else elsewhere
+                if d != root and not has_managed[d]:
+                    if total[d]:
+                        bucket.append((d, total[d], False))
+                    continue
+                if own[d]:
+                    bucket.append((d, own[d], True))
+                stack.extend((k, anc_managed) for k in kids)
+
+        def key(e):
+            return (-e[1], e[0])
+        return sorted(under, key=key), sorted(elsewhere, key=key)
+
+    @staticmethod
+    def _print_unmanaged_report(under: list, elsewhere: list) -> None:
+        """Print the unmanaged-directory report (see _scan_unmanaged_directories)."""
+        def emit(entries):
+            width = len(str(max(e[1] for e in entries)))
+            for d, count, own_only in entries:
+                note = '  (files in this directory only)' if own_only else ''
+                print(f"  {count:>{width}}  {d}{note}", flush=True)
+
+        if under:
+            print(f"--update-cards: {len(under)} unmanaged director"
+                  f"{'ies' if len(under) != 1 else 'y'} under managed areas "
+                  f"(source files; run /kb-card to bootstrap):", flush=True)
+            emit(under)
+        if elsewhere:
+            print(f"--update-cards: {len(elsewhere)} other unmanaged director"
+                  f"{'ies' if len(elsewhere) != 1 else 'y'} "
+                  f"(source files; silence with update_cards.ignore_unmanaged):",
+                  flush=True)
+            emit(elsewhere)
+
     @staticmethod
     def _is_budget_exhausted(output: str) -> bool:
         """True if claude CLI output indicates a hard spend/usage limit."""
@@ -1040,7 +1187,8 @@ class KnowledgebaseIndexer:
         For every directory under the include paths that has a
         `.kb/segmentation.yml` with a `dir_fingerprint` field, recompute
         the fingerprint and invoke `claude -p /kb-card <dir>` when stale.
-        Directories without a `segmentation.yml` are skipped entirely.
+        Directories without a `segmentation.yml` are not refreshed; they are
+        listed in the unmanaged-directory report instead.
 
         After each successful refresh the directory's `.kb/` changes are
         committed if it lives in a git work tree (suppressed by `no_commit`
@@ -1059,6 +1207,9 @@ class KnowledgebaseIndexer:
         total = len(stale) + current_count
         print(f"--update-cards: {total} managed director{'ies' if total != 1 else 'y'} found, "
               f"{len(stale)} stale, {current_count} current", flush=True)
+
+        under, elsewhere = self._scan_unmanaged_directories(config)
+        self._print_unmanaged_report(under, elsewhere)
 
         if not stale:
             return
@@ -1975,6 +2126,14 @@ output:
 # types:
 #   exclude: [card]             # e.g. a deep content index without card summaries
 #   include: [card]             # or a card-only catalog
+
+# --update-cards also reports unmanaged directories (card sources but no
+# .kb/segmentation.yml). Paths or globs listed here are left out of that report
+# only; they are still indexed.
+# update_cards:
+#   ignore_unmanaged:
+#     - "~/dev/yocto"
+#     - "~/dev/aosp"
 """
         
         dest = Path(args.sample_config)

@@ -23,6 +23,19 @@
         }
       }
     },
+    "update_cards": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ignore_unmanaged": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
     "keywords": {
       "type": "object",
       "properties": {
