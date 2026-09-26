@@ -24,3 +24,44 @@ output:
 
 types:
   include: [card]
+
+# Directories left out of the unmanaged-directory report (--update-cards and
+# list-unmanaged). Code checkouts and generated output that will never get
+# cards; still indexed as usual.
+update_cards:
+  ignore_unmanaged:
+    - "~/dev/AI-scraping"
+    - "~/dev/DSView"
+    - "~/dev/aosp"
+    - "~/dev/arm-trusted-firmware"
+    - "~/dev/claudecode_workflows"
+    - "~/dev/cloud-clipboard"
+    - "~/dev/dictation"
+    - "~/dev/edgeai-app-stack"
+    - "~/dev/edk2"
+    - "~/dev/fb"
+    - "~/dev/fwupd"
+    - "~/dev/j7ros_home"
+    - "~/dev/jetbot"
+    - "~/dev/k3-upstream-boot-build"
+    - "~/dev/kb"                  # generated KB index and telemetry
+    - "~/dev/kbi"
+    - "~/dev/khoj"
+    - "~/dev/linux"
+    - "~/dev/pathfinder"
+    - "~/dev/pomodora"
+    - "~/dev/processor-sdk-doc"
+    - "~/dev/robot"
+    - "~/dev/sdv"                 # upstream SDV checkouts (score, autoware, ...)
+    - "~/dev/sdv-compose"
+    - "~/dev/slide-skill"
+    - "~/dev/ti-gpio-py"
+    - "~/dev/ti-pptx-skill"
+    - "~/dev/tijsdk"
+    - "~/dev/tirtos"
+    - "~/dev/torizon"
+    - "~/dev/trusted-firmware-a"
+    - "~/dev/u-boot"
+    - "~/dev/utility-scripts"
+    - "~/dev/whitebox-sdk"
+    - "~/dev/yocto"
