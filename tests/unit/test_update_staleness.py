@@ -17,7 +17,7 @@ import yaml
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from kbi import (KnowledgebaseIndexer, run_hash, run_manifest_sync,
+from kbi import (KnowledgebaseIndexer, run_hash, run_manifest_sync, run_list_unmanaged,
                  run_decisions, _compute_dir_hash)
 
 
@@ -732,3 +732,25 @@ class TestUnmanagedScan:
         _, other = _scan(tmp_path)
         assert [e[0] for e in other] == [str(tmp_path / 'big'),
                                          str(tmp_path / 'small')]
+
+    def test_list_unmanaged_subcommand(self, tmp_path, capsys):
+        _tree(tmp_path, {'area/.kb': '', 'area/new/n.md': 'x',
+                         'loose/n.md': 'x'})
+        cfg = tmp_path / 'c.yml'
+        cfg.write_text(yaml.safe_dump({
+            'directories': {'include': [str(tmp_path)]},
+            'output': {'file': str(tmp_path / 'out.mm')}}))
+        assert run_list_unmanaged([str(cfg)]) == 0
+        out = capsys.readouterr().out
+        assert out.index(str(tmp_path / 'area' / 'new')) < out.index(
+            str(tmp_path / 'loose'))
+        assert 'list-unmanaged: 1 unmanaged directory under managed areas' in out
+
+    def test_list_unmanaged_none_found(self, tmp_path, capsys):
+        cfg = tmp_path / 'c.yml'
+        (tmp_path / 'src').mkdir()
+        cfg.write_text(yaml.safe_dump({
+            'directories': {'include': [str(tmp_path / 'src')]},
+            'output': {'file': str(tmp_path / 'out.mm')}}))
+        assert run_list_unmanaged([str(cfg)]) == 0
+        assert 'no unmanaged directories found' in capsys.readouterr().out

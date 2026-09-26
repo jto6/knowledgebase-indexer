@@ -287,6 +287,7 @@ Manifest field semantics: `docs/REFERENCE.md` §3; command behavior: §5.7–5.8
 - **R-UPD-UNMG-003**: Report each fully unmanaged subtree once, at its top: the directory whose parent is managed, is an include root, or is unmanaged but has a managed descendant; its count covers the whole subtree. An unmanaged include root or partially managed directory with card sources of its own is reported for those files alone
 - **R-UPD-UNMG-004**: List directories with a managed ancestor first, then the rest; sort each group by source count, descending, with no cap
 - **R-UPD-UNMG-005**: `update_cards.ignore_unmanaged` (config; paths or globs, `~` expanded) removes directories and their subtrees from the report without affecting indexing
+- **R-UPD-UNMG-006**: `kbi list-unmanaged <config>` prints the report alone, with no staleness check, refresh, commit or index build
 
 ## 7. Card Focus (`-focus`) Requirements
 

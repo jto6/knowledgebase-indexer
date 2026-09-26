@@ -926,6 +926,13 @@ unmanaged directories that hold card sources, so areas needing a first
 - `update_cards.ignore_unmanaged` in the config (§5.1) silences directories that
   will never get cards, such as code checkouts.
 
+To get this report alone, without checking staleness, refreshing cards,
+committing or building an index, run:
+
+```
+python3 kbi.py list-unmanaged <config.yml>
+```
+
 ```
 --update-cards: 2 unmanaged directories under managed areas (source files; run /kb-card to bootstrap):
   269  /home/jon/dev/advisor/council-meetings

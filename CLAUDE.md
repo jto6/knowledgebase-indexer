@@ -78,6 +78,7 @@ Requires uv (system prerequisite). Run scripts directly so their
 
 # Helper subcommands (see docs/REFERENCE.md §5.6–5.8)
 ./kbi.py search configs/myconfig.yml "<regex>" -i
+./kbi.py list-unmanaged configs/myconfig.yml   # dirs with sources but no cards
 ./kbi.py hash <file>...          # canonical source_hash per file
 ./kbi.py manifest-sync [<dir>]   # refresh manifest hashes/fingerprint
 ./kbi.py decisions [<root>]      # audit auto-made segmentation decisions

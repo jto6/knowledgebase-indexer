@@ -946,7 +946,8 @@ class KnowledgebaseIndexer:
         return sorted(under, key=key), sorted(elsewhere, key=key)
 
     @staticmethod
-    def _print_unmanaged_report(under: list, elsewhere: list) -> None:
+    def _print_unmanaged_report(under: list, elsewhere: list,
+                                prefix: str = '--update-cards') -> None:
         """Print the unmanaged-directory report (see _scan_unmanaged_directories)."""
         def emit(entries):
             width = len(str(max(e[1] for e in entries)))
@@ -955,12 +956,12 @@ class KnowledgebaseIndexer:
                 print(f"  {count:>{width}}  {d}{note}", flush=True)
 
         if under:
-            print(f"--update-cards: {len(under)} unmanaged director"
+            print(f"{prefix}: {len(under)} unmanaged director"
                   f"{'ies' if len(under) != 1 else 'y'} under managed areas "
                   f"(source files; run /kb-card to bootstrap):", flush=True)
             emit(under)
         if elsewhere:
-            print(f"--update-cards: {len(elsewhere)} other unmanaged director"
+            print(f"{prefix}: {len(elsewhere)} other unmanaged director"
                   f"{'ies' if len(elsewhere) != 1 else 'y'} "
                   f"(source files; silence with update_cards.ignore_unmanaged):",
                   flush=True)
@@ -1694,6 +1695,40 @@ Extra arguments after PATTERN are passed through to the backend (rg, else grep):
     return 2 if error else (0 if found else 1)
 
 
+def run_list_unmanaged(argv: List[str]) -> int:
+    """`kbi list-unmanaged <config>` — report directories that have no cards yet.
+
+    Prints the same unmanaged-directory report as `--update-cards`
+    (R-UPD-UNMG-006) without checking staleness, refreshing cards,
+    committing, or building an index.
+    """
+    parser = argparse.ArgumentParser(
+        prog='kbi list-unmanaged',
+        description="List directories with card sources but no .kb/segmentation.yml "
+                    "(the --update-cards report, without refreshing anything).")
+    parser.add_argument('config', help='Path to the index configuration file')
+    args = parser.parse_args(argv)
+
+    try:
+        config = ConfigLoader().load_config(args.config)
+        _apply_output_default(config, args.config)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
+    ix = KnowledgebaseIndexer(config)
+    under, elsewhere = ix._scan_unmanaged_directories(config)
+    if not under and not elsewhere:
+        print("list-unmanaged: no unmanaged directories found.")
+        return 0
+    try:
+        ix._print_unmanaged_report(under, elsewhere, prefix='list-unmanaged')
+    except BrokenPipeError:
+        # Output piped to a reader that closed early (e.g. `| head`).
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    return 0
+
+
 def run_hash(argv: List[str]) -> int:
     """`kbi hash <file>...` — print the canonical KB content hash per file.
 
@@ -1990,6 +2025,8 @@ def main():
     argv = sys.argv[1:]
     if argv and argv[0] == 'search':
         return run_search(argv[1:])
+    if argv and argv[0] == 'list-unmanaged':
+        return run_list_unmanaged(argv[1:])
     if argv and argv[0] == 'hash':
         return run_hash(argv[1:])
     if argv and argv[0] == 'manifest-sync':
@@ -2006,6 +2043,7 @@ Generate navigational knowledge indexes for structured file collections (Freepla
 commands:
   search <config> PATTERN [args]   Grep just the files this config indexes
                                    (ripgrep if available, else grep)
+  list-unmanaged <config>          List directories with sources but no cards
   hash <file>...                   Print the canonical source_hash per file
   manifest-sync [<dir>]            Refresh a .kb manifest's derivable fields
   decisions [<root>]               Audit auto-made segmentation decisions
@@ -2028,6 +2066,9 @@ Examples:
 
   # Search just the indexed files (ripgrep, else grep)
   python kbi.py search configs/Study25.yml "a-core" -i
+
+  # List directories that have card sources but no cards yet (report only)
+  python kbi.py list-unmanaged configs/Study25.yml
 
   # Manifest helper verbs (used by /kb-card; see docs/REFERENCE.md §5.8)
   python kbi.py hash <file>...          # canonical source_hash per file

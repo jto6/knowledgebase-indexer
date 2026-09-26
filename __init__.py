@@ -37,5 +37,5 @@ def __getattr__(name):
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
-__all__ = ['KnowledgebaseIndexer', 'run_search', 'run_hash',
+__all__ = ['KnowledgebaseIndexer', 'run_search', 'run_list_unmanaged', 'run_hash',
            'run_manifest_sync', 'run_decisions', '_compute_dir_hash']
