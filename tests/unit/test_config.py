@@ -246,3 +246,102 @@ class TestConfigSchema:
             jsonschema.validate(
                 {"directories": {"include": ["*.md"]}, "output": {"file": "o.mm"}, "types": types},
                 schema)
+
+@pytest.mark.quick
+class TestConfigExtends:
+    """`extends:` config inheritance (R-CFG-016..020)."""
+
+    BASE = {
+        "directories": {"include": ["/a", "/b"], "exclude": ["**/.git/**"]},
+        "keywords": {"files": ["/kw.txt"]},
+        "output": {"format": "freeplane"},
+        "types": {"include": ["card"]},
+        "update_cards": {"ignore_unmanaged": ["~/dev/linux"]},
+    }
+
+    @staticmethod
+    def _write(path: Path, data) -> Path:
+        path.write_text(yaml.safe_dump(data))
+        return path
+
+    def test_inherits_and_overrides(self, tmp_path):
+        """Child inherits unspecified keys; mappings merge, child wins (R-CFG-016, -018)."""
+        self._write(tmp_path / "base.yml", self.BASE)
+        child = self._write(tmp_path / "child.yml", {
+            "extends": "base.yml",
+            "output": {"file": "/out", "format": "markdown"},
+        })
+        cfg = ConfigLoader().load_config(str(child))
+        assert cfg["directories"] == self.BASE["directories"]
+        assert cfg["types"] == {"include": ["card"]}
+        assert cfg["update_cards"] == {"ignore_unmanaged": ["~/dev/linux"]}
+        assert cfg["output"] == {"file": "/out", "format": "markdown"}
+        assert "extends" not in cfg
+
+    def test_lists_replace_not_append(self, tmp_path):
+        """A child list replaces the inherited one; `[]` clears it (R-CFG-018)."""
+        self._write(tmp_path / "base.yml", self.BASE)
+        child = self._write(tmp_path / "child.yml", {
+            "extends": "base.yml",
+            "keywords": {"files": []},
+            "directories": {"include": ["/c"]},
+        })
+        cfg = ConfigLoader().load_config(str(child))
+        assert cfg["keywords"]["files"] == []
+        assert cfg["directories"]["include"] == ["/c"]
+        assert cfg["directories"]["exclude"] == ["**/.git/**"]   # sibling key kept
+
+    def test_path_relative_to_extending_file(self, tmp_path, monkeypatch):
+        """`extends` resolves against the extending file's directory, not cwd (R-CFG-017)."""
+        (tmp_path / "shared").mkdir()
+        (tmp_path / "configs").mkdir()
+        self._write(tmp_path / "shared" / "base.yml", self.BASE)
+        child = self._write(tmp_path / "configs" / "child.yml",
+                            {"extends": "../shared/base.yml"})
+        monkeypatch.chdir(tmp_path)   # cwd-relative lookup would miss
+        cfg = ConfigLoader().load_config(str(child))
+        assert cfg["directories"]["include"] == ["/a", "/b"]
+
+    def test_chained_extends(self, tmp_path):
+        """A base may itself extend another config (R-CFG-019)."""
+        self._write(tmp_path / "root.yml", self.BASE)
+        self._write(tmp_path / "mid.yml", {"extends": "root.yml",
+                                           "types": {"include": ["card", "markdown"]}})
+        leaf = self._write(tmp_path / "leaf.yml", {"extends": "mid.yml",
+                                                    "output": {"format": "markdown"}})
+        cfg = ConfigLoader().load_config(str(leaf))
+        assert cfg["types"] == {"include": ["card", "markdown"]}
+        assert cfg["output"]["format"] == "markdown"
+        assert cfg["update_cards"] == {"ignore_unmanaged": ["~/dev/linux"]}
+
+    def test_cycle_rejected(self, tmp_path):
+        """Circular extends raises a clear error (R-CFG-020)."""
+        self._write(tmp_path / "a.yml", {"extends": "b.yml", **self.BASE})
+        self._write(tmp_path / "b.yml", {"extends": "a.yml"})
+        with pytest.raises(ValueError, match="circular extends"):
+            ConfigLoader().load_config(str(tmp_path / "a.yml"))
+
+    def test_missing_base_rejected(self, tmp_path):
+        """A missing base names both files in the error (R-CFG-020)."""
+        child = self._write(tmp_path / "child.yml", {"extends": "nope.yml"})
+        with pytest.raises(FileNotFoundError, match="extended by"):
+            ConfigLoader().load_config(str(child))
+
+    def test_merged_result_is_validated(self, tmp_path):
+        """Validation runs on the merged config, so a child may omit required keys
+        it inherits, but an invalid override is still rejected (R-CFG-016)."""
+        self._write(tmp_path / "base.yml", self.BASE)
+        bad = self._write(tmp_path / "bad.yml", {"extends": "base.yml",
+                                                  "types": {"include": ["bogus"]}})
+        with pytest.raises(ValueError, match="validation error"):
+            ConfigLoader().load_config(str(bad))
+
+    def test_base_not_mutated_between_loads(self, tmp_path):
+        """Deep merge copies, so loading a child leaves the base's own load unchanged."""
+        base = self._write(tmp_path / "base.yml", self.BASE)
+        child = self._write(tmp_path / "child.yml", {"extends": "base.yml",
+                                                      "output": {"format": "markdown"}})
+        loader = ConfigLoader()
+        loader.load_config(str(child))
+        assert loader.load_config(str(base))["output"]["format"] == "freeplane"
+

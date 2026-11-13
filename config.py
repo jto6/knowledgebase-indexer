@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Configuration management with schema validation."""
 
+import copy
 import json
 import yaml
 import jsonschema
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 
 class ConfigLoader:
@@ -62,15 +63,75 @@ class ConfigLoader:
                 "path (run `kbi.py --sample-config` to scaffold one)."
             )
 
-        with open(discovered_path, 'r') as f:
-            if discovered_path.endswith(('.yml', '.yaml')):
-                config = yaml.safe_load(f)
-            else:
-                config = json.load(f)
+        config = self._load_with_extends(Path(discovered_path), [])
 
         config = self._normalize_enums(config)
         self.validate_config(config)
         return self._merge_with_defaults(config)
+
+    @staticmethod
+    def _read_config_file(path: Path) -> Dict[str, Any]:
+        """Parse one config file (YAML or JSON) into a mapping."""
+        with open(path, 'r') as f:
+            if path.suffix in ('.yml', '.yaml'):
+                data = yaml.safe_load(f)
+            else:
+                data = json.load(f)
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Configuration error: {path} must contain a mapping at the top level"
+            )
+        return data
+
+    def _load_with_extends(self, path: Path, chain: List[Path]) -> Dict[str, Any]:
+        """Load a config file, resolving its `extends:` chain (R-CFG-016..020).
+
+        `extends` names a base config, resolved relative to the extending
+        file's directory (`~` expanded).  The base is loaded first (itself
+        possibly extending another), then this file is deep-merged over it.
+        `chain` holds the files already on the resolution path, for cycle
+        detection (R-CFG-020).
+        """
+        resolved = path.expanduser().resolve()
+        if resolved in chain:
+            cycle = ' -> '.join(str(p) for p in chain + [resolved])
+            raise ValueError(f"Configuration error: circular extends: {cycle}")
+        config = self._read_config_file(resolved)
+
+        base_ref = config.pop('extends', None)
+        if base_ref is None:
+            return config
+        if not isinstance(base_ref, str) or not base_ref.strip():
+            raise ValueError(
+                f"Configuration error: 'extends' in {resolved} must be a file path"
+            )
+        base_path = Path(base_ref).expanduser()
+        if not base_path.is_absolute():
+            base_path = resolved.parent / base_path
+        if not base_path.exists():
+            raise FileNotFoundError(
+                f"Config file not found: {base_path} (extended by {resolved})"
+            )
+        base = self._load_with_extends(base_path, chain + [resolved])
+        return self._deep_merge(base, config)
+
+    @classmethod
+    def _deep_merge(cls, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge `override` onto `base` (R-CFG-018).
+
+        Mappings merge key by key, recursively, with `override` winning.
+        Lists and scalars in `override` replace the base value wholesale, so
+        an extending config can clear an inherited list with `[]`.
+        """
+        merged = copy.deepcopy(base)
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = cls._deep_merge(merged[key], value)
+            else:
+                merged[key] = copy.deepcopy(value)
+        return merged
 
     def _normalize_enums(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """YAML parses `on`/`off`/`yes`/`no` as booleans; coerce them back to the

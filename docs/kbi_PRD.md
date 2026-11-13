@@ -129,6 +129,19 @@ renderers (e.g. the planned Markdown renderer) satisfy their own equivalents.
 - **R-CFG-014**: Specify output file location in configuration
 - **R-CFG-015**: Configure output format parameters
 
+### 3.6 Configuration Inheritance
+- **R-CFG-016**: A config may name a base config with a top-level `extends:`
+  key; the effective config is the base with the extending file merged over it,
+  and schema validation (R-CFG-002) applies to that merged result
+- **R-CFG-017**: Resolve a relative `extends` path against the extending file's
+  directory (not the working directory); expand `~`
+- **R-CFG-018**: Merge mappings key by key, recursively, with the extending file
+  winning; lists and scalars in the extending file replace the base value
+  wholesale (so `[]` clears an inherited list)
+- **R-CFG-019**: A base config may itself use `extends` (chained inheritance)
+- **R-CFG-020**: Reject circular `extends` chains and missing base files with an
+  error naming the files involved
+
 ## 4. Interface Requirements
 
 ### 4.1 Configuration File Schema

@@ -712,6 +712,13 @@ missing parent directories in `PATH`.
   expanded) left out of the `--update-cards` unmanaged-directory report (§5.7),
   e.g. code checkouts that will never get cards. Affects only the report, not
   what is indexed.
+- `extends` — optional path to a base config (relative to this file, `~`
+  expanded). The base loads first and this file merges over it: mappings merge
+  key by key with this file winning, while lists and scalars replace the base
+  value (`[]` clears an inherited list). Bases may chain; cycles are an error.
+  Use it when several catalogs share a registry and differ only in renderer,
+  e.g. a markdown catalog that extends the Freeplane config and overrides just
+  `output` and `keywords` (see §5.5).
 
 ### 5.2 Scoping via `types`
 
@@ -809,6 +816,18 @@ output:
   format: "markdown"
 types:
   include: [card]
+```
+
+A second catalog over the same registry can extend this one and override only
+what differs (R-CFG-016..020):
+
+```yaml
+extends: catalog.yml          # resolved relative to this file
+keywords:
+  files: []                   # replaces, not appends to, the inherited list
+output:
+  file: "/home/jon/dev/kb/index.mm"
+  format: "freeplane"
 ```
 
 ### 5.6 Searching the indexed files — `kbi search`
