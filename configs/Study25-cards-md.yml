@@ -3,22 +3,15 @@
 # The registry of which repos contribute to the card-only knowledge databas
 # in markdown renderer: generates per-domain slices into the central catalog
 # home (~/dev/kb/index/<domain>.md) that consumers (council members, projects,
-# ad-hoc sessions) subscribe to. Add more repo roots under `include` over time.
-directories:
-  include:
-    - "/home/jon/MyGoogleDrive"
-    - "/home/jon/TIGoogleDrive"
-    - "/home/jon/dev"
-  exclude:
-    - "**/node_modules/**"
-    - "**/.git/**"
-    - "**/build/**"
-    - "**/photos/**"
-    - "**/__pycache__/**"
-    - "**/.venv*/**"
+# ad-hoc sessions) subscribe to.
+#
+# Directories, excludes, types and update_cards.ignore_unmanaged come from
+# Study25-cards.yml (add repo roots there); this file overrides only what
+# differs for the markdown catalog.
+extends: Study25-cards.yml
 
 keywords:
-  files: []
+  files: []        # replaces the inherited Freeplane keyword files
 
 output:
   file: "/home/jon/dev/kb/index"   # markdown → an output directory of index files
@@ -28,6 +21,3 @@ output:
   # views:
   #   word: on      # include the (heavy) word index in the markdown catalog
   #   tag: off      # suppress the tag index
-
-types:
-  include: [card]

@@ -1,4 +1,6 @@
 # kbi configuration file for my home repositories - knowledge cards only
+# Shared base for Study25-cards-md.yml (which extends this file), so the
+# directories, types and ignore list below apply to both catalogs.
 directories:
   include:
     - "/home/jon/MyGoogleDrive"

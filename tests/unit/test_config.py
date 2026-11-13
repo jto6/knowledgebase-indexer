@@ -345,3 +345,12 @@ class TestConfigExtends:
         loader.load_config(str(child))
         assert loader.load_config(str(base))["output"]["format"] == "freeplane"
 
+    def test_repo_study25_md_inherits_ignore_list(self):
+        """The shipped markdown catalog config shares its base's ignore list."""
+        configs = Path(__file__).parent.parent.parent / "configs"
+        md = ConfigLoader().load_config(str(configs / "Study25-cards-md.yml"))
+        fp = ConfigLoader().load_config(str(configs / "Study25-cards.yml"))
+        assert md["update_cards"] == fp["update_cards"]
+        assert md["directories"] == fp["directories"]
+        assert md["output"]["format"] == "markdown"
+        assert md["keywords"]["files"] == []
