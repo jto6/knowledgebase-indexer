@@ -279,6 +279,7 @@ Manifest field semantics: `docs/REFERENCE.md` §3; command behavior: §5.7–5.8
 - **R-UPD-STALE-004**: Treat files in the manifest's `excluded:` section as tracked-and-unchanged while their recorded hash matches; mark stale on drift; deletion of an absorbed or excluded file is never staleness (its entry is pruned at the next reconcile)
 - **R-UPD-STALE-005**: Treat a card entry without a `source_hash` as tracked-but-uncomparable; it must not surface its own source as new
 - **R-UPD-STALE-006**: Treat card entries marked `status: pending` as unfinished work — the directory stays stale until their bodies are authored
+- **R-UPD-STALE-007**: New-source detection excludes the built-in source patterns (`*.conflict*`, `*.mm.md`, `CLAUDE.md`) plus the nearest ancestor kb.yml's `source_exclude`; that kb.yml's `override_default_source_exclude` lifts the named built-in patterns (exact match) for its subtree
 
 ### 6.2 Delta Handoff
 - **R-UPD-DELTA-001**: Write a per-directory content delta file and invoke `claude -p '/kb-card --delta <file>'`; fall back to plain `/kb-card` only when the delta cannot be written
@@ -295,7 +296,7 @@ Manifest field semantics: `docs/REFERENCE.md` §3; command behavior: §5.7–5.8
 - **R-UPD-HELP-003**: `kbi decisions [<root>]` lists all `decided: auto` manifest entries under a tree, newest first (`--all` includes `decided: user`), as the audit trail for headless runs
 
 ### 6.5 Unmanaged Directory Report
-- **R-UPD-UNMG-001**: After the managed-directory scan, report unmanaged directories (no `.kb/segmentation.yml`) that hold card sources (`.md`, `.markdown`, `.mm`, excluding `*.kb.md` and the built-in source excludes); binary formats are not counted. Report only; never bootstrap
+- **R-UPD-UNMG-001**: After the managed-directory scan, report unmanaged directories (no `.kb/segmentation.yml`) that hold card sources (`.md`, `.markdown`, `.mm`, excluding `*.kb.md` and the source excludes in effect per R-UPD-STALE-007); binary formats are not counted. Report only; never bootstrap
 - **R-UPD-UNMG-002**: Visit only directories the config would index: include roots, minus `directories.exclude` and hidden directories
 - **R-UPD-UNMG-003**: Report each fully unmanaged subtree once, at its top: the directory whose parent is managed, is an include root, or is unmanaged but has a managed descendant; its count covers the whole subtree. An unmanaged include root or partially managed directory with card sources of its own is reported for those files alone
 - **R-UPD-UNMG-004**: List directories with a managed ancestor first, then the rest; sort each group by source count, descending, with no cap

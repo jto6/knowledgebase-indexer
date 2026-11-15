@@ -62,8 +62,10 @@ BUILTIN_TYPES = [
 
 
 # Built-in source-exclude patterns applied by --update-cards's staleness check even
-# when no kb.yml is present.  Users can extend (not replace) via kb.yml
-# `source_exclude`.  Hidden files (.*) are always excluded separately.
+# when no kb.yml is present.  Users extend them via kb.yml `source_exclude`, and
+# lift individual ones for an area via kb.yml `override_default_source_exclude`
+# (e.g. CLAUDE.md in a repo whose CLAUDE.md files ARE the content; R-UPD-STALE-007).
+# Hidden files (.*) are always excluded separately.
 _DEFAULT_SOURCE_EXCLUDE = [
     '*.conflict*',   # Google Drive / OneDrive sync-conflict artefacts
     '*.mm.md',       # mm2md converted outputs (derived, not source)
@@ -477,16 +479,28 @@ class KnowledgebaseIndexer:
         return f"sha256:{digest}"
 
     @staticmethod
+    def _effective_source_exclude(kb: Dict[str, Any]) -> List[str]:
+        """Source-exclude patterns for one parsed kb.yml mapping (R-UPD-STALE-007).
+
+        The built-in defaults, minus any named in
+        `override_default_source_exclude` (exact pattern match), plus the
+        area's own `source_exclude` patterns.
+        """
+        lifted = set(kb.get('override_default_source_exclude') or [])
+        patterns = [p for p in _DEFAULT_SOURCE_EXCLUDE if p not in lifted]
+        patterns.extend(kb.get('source_exclude') or [])
+        return patterns
+
+    @staticmethod
     def _load_source_exclude(source_dir: Path) -> List[str]:
         """Return the source-exclude glob patterns for source_dir.
 
-        Starts with _DEFAULT_SOURCE_EXCLUDE, then appends any patterns from
-        the nearest ancestor `.kb/kb.yml` `source_exclude` list.  Nearest-
-        ancestor-wins for the yaml key itself; the built-in defaults always
-        apply so existing kb.yml files without `source_exclude` still get the
-        standard artefact filters.
+        Resolved from the nearest ancestor `.kb/kb.yml` (nearest wins): the
+        built-in _DEFAULT_SOURCE_EXCLUDE, minus the patterns it lists under
+        `override_default_source_exclude`, plus its `source_exclude` patterns.
+        With no kb.yml (or an unreadable one) the built-in defaults apply, so
+        existing areas still get the standard artefact filters.
         """
-        patterns: List[str] = list(_DEFAULT_SOURCE_EXCLUDE)
         current = source_dir
         while True:
             kb_yml = current / '.kb' / 'kb.yml'
@@ -494,16 +508,14 @@ class KnowledgebaseIndexer:
                 try:
                     import yaml as _yaml
                     kb = _yaml.safe_load(kb_yml.read_text(encoding='utf-8')) or {}
-                    user = kb.get('source_exclude') or []
-                    patterns.extend(user)
+                    return KnowledgebaseIndexer._effective_source_exclude(kb)
                 except Exception:
-                    pass
-                break
+                    break
             parent = current.parent
             if parent == current:
                 break
             current = parent
-        return patterns
+        return list(_DEFAULT_SOURCE_EXCLUDE)
 
     @staticmethod
     def _content_hash_matches(path: Path, stored_hash: str) -> bool:
@@ -712,8 +724,9 @@ class KnowledgebaseIndexer:
         #   2. Extension heuristic — only consider files whose suffix matches
         #      an extension already tracked; this automatically excludes
         #      .pdf/.html/.log/.csv etc. from directories that only track .mm
-        #      or .md sources.  Users add same-extension exclusions (e.g.
-        #      CLAUDE.md) via kb.yml source_exclude.
+        #      or .md sources.  Users add same-extension exclusions via kb.yml
+        #      source_exclude, and lift built-in ones (e.g. CLAUDE.md) via
+        #      override_default_source_exclude (R-UPD-STALE-007).
         tracked_exts = {p.suffix.lower() for p in tracked if p.suffix}
         if tracked_exts:
             exclude_patterns = KnowledgebaseIndexer._load_source_exclude(source_dir)
@@ -828,15 +841,22 @@ class KnowledgebaseIndexer:
     _UNMANAGED_SOURCE_EXTS = ('.md', '.markdown', '.mm')
 
     @staticmethod
-    def _count_card_sources(filenames: List[str]) -> int:
-        """Count files that /kb-card would treat as sources (not cards)."""
+    def _count_card_sources(filenames: List[str],
+                            exclude_patterns: Optional[List[str]] = None) -> int:
+        """Count files that /kb-card would treat as sources (not cards).
+
+        exclude_patterns defaults to the built-in source excludes; the scan
+        passes the directory's effective patterns (R-UPD-UNMG-001).
+        """
+        if exclude_patterns is None:
+            exclude_patterns = _DEFAULT_SOURCE_EXCLUDE
         n = 0
         for name in filenames:
             if name.startswith('.') or name.endswith('.kb.md'):
                 continue
             if not name.lower().endswith(KnowledgebaseIndexer._UNMANAGED_SOURCE_EXTS):
                 continue
-            if any(fnmatch.fnmatch(name, pat) for pat in _DEFAULT_SOURCE_EXCLUDE):
+            if any(fnmatch.fnmatch(name, pat) for pat in exclude_patterns):
                 continue
             n += 1
         return n
@@ -901,7 +921,16 @@ class KnowledgebaseIndexer:
             own: Dict[str, int] = {}
             children: Dict[str, List[str]] = {}
             order: List[str] = []
+            # Effective source excludes per directory: inherited from the
+            # parent unless the directory carries its own .kb/kb.yml.
+            src_excl: Dict[str, List[str]] = {}
             for dirpath, dirnames, filenames in os.walk(root):
+                parent_dir = os.path.dirname(dirpath)
+                if (parent_dir in src_excl and not os.path.isfile(
+                        os.path.join(dirpath, '.kb', 'kb.yml'))):
+                    src_excl[dirpath] = src_excl[parent_dir]
+                else:
+                    src_excl[dirpath] = self._load_source_exclude(Path(dirpath))
                 dirnames[:] = sorted(
                     d for d in dirnames
                     if not d.startswith('.')
@@ -911,7 +940,8 @@ class KnowledgebaseIndexer:
                 is_managed = os.path.isfile(
                     os.path.join(dirpath, '.kb', 'segmentation.yml'))
                 managed[dirpath] = is_managed
-                own[dirpath] = 0 if is_managed else self._count_card_sources(filenames)
+                own[dirpath] = 0 if is_managed else self._count_card_sources(
+                    filenames, src_excl[dirpath])
                 children[dirpath] = [os.path.join(dirpath, d) for d in dirnames]
                 order.append(dirpath)
 

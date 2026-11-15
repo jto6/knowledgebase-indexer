@@ -293,6 +293,20 @@ Optional:
   source_exclude:
     - "*.pdf"
   ```
+- `override_default_source_exclude` — list of built-in default patterns (from
+  the list above, matched exactly) to **lift** for this area. Use it where a
+  default is wrong for the content, e.g. a repo whose `CLAUDE.md` files are the
+  knowledge itself (persona definitions, protocols) rather than tooling
+  instructions. The lifted pattern no longer filters new-source detection in
+  `--update-cards` or the unmanaged-directory report, so those files are
+  carded and tracked like any other source. Like `source_exclude`, it is
+  resolved from the nearest ancestor `kb.yml` and applies to the whole
+  subtree; the remaining defaults still apply.
+
+  ```yaml
+  override_default_source_exclude:
+    - CLAUDE.md
+  ```
 
 ### 2.2 Profiles and resolution
 
@@ -930,7 +944,9 @@ unmanaged directories that hold card sources, so areas needing a first
 - Only directories the config would index are visited (include roots, minus
   `directories.exclude` and hidden directories).
 - Card sources are `.md`, `.markdown` and `.mm` files, minus `*.kb.md` cards and
-  the built-in source excludes (`CLAUDE.md`, `*.mm.md`, `*.conflict*`). Binary
+  the source excludes in effect (the built-ins `CLAUDE.md`, `*.mm.md`,
+  `*.conflict*`, minus any lifted by the nearest `kb.yml`
+  `override_default_source_exclude`, plus its `source_exclude`). Binary
   formats (`.pdf`, `.docx`, `.pptx`) are not counted.
 - A fully unmanaged subtree is listed once, at its top: the directory whose
   parent is managed, is an include root, or is unmanaged but has a managed

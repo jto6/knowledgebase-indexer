@@ -72,6 +72,36 @@ class TestDirContentChanged:
                           'source_hash': _sha(d / 'A.mm')}]}
         assert KnowledgebaseIndexer._dir_content_changed(seg, d / '.kb') is True
 
+    def test_claude_md_not_a_new_source_by_default(self, tmp_path):
+        d = _make_dir(tmp_path, {'A.md': 'alpha', 'CLAUDE.md': 'persona'})
+        seg = {'cards': [{'slug': 'a', 'source': '../A.md',
+                          'source_hash': _sha(d / 'A.md')}]}
+        assert KnowledgebaseIndexer._dir_content_changed(seg, d / '.kb') is False
+
+    def test_override_default_source_exclude_lifts_claude_md(self, tmp_path):
+        # R-UPD-STALE-007: an area whose CLAUDE.md files are content.
+        d = _make_dir(tmp_path, {'A.md': 'alpha', 'CLAUDE.md': 'persona'})
+        (d / '.kb' / 'kb.yml').write_text(
+            'override_default_source_exclude:\n  - CLAUDE.md\n')
+        seg = {'cards': [{'slug': 'a', 'source': '../A.md',
+                          'source_hash': _sha(d / 'A.md')}]}
+        delta = KnowledgebaseIndexer._dir_content_delta(seg, d / '.kb')
+        assert delta['new'] == ['CLAUDE.md']
+
+    def test_override_inherited_and_keeps_other_defaults(self, tmp_path):
+        (tmp_path / '.kb').mkdir()
+        (tmp_path / '.kb' / 'kb.yml').write_text(
+            'override_default_source_exclude: [CLAUDE.md]\n'
+            'source_exclude: ["scratch*.md"]\n')
+        d = tmp_path / 'sub'
+        d.mkdir(); (d / '.kb').mkdir()
+        for n in ('A.md', 'CLAUDE.md', 'x.mm.md', 'scratch1.md'):
+            (d / n).write_text(n)
+        seg = {'cards': [{'slug': 'a', 'source': '../A.md',
+                          'source_hash': _sha(d / 'A.md')}]}
+        delta = KnowledgebaseIndexer._dir_content_delta(seg, d / '.kb')
+        assert delta['new'] == ['CLAUDE.md']
+
     def test_changed_source_is_stale(self, tmp_path):
         d = _make_dir(tmp_path, {'A.mm': 'alpha'})
         seg = {'cards': [{'slug': 'a', 'source': '../A.mm',
@@ -725,6 +755,17 @@ class TestUnmanagedScan:
                          'd/f.conflict1.mm': 'x', 'e/real.markdown': 'x'})
         _, other = _scan(tmp_path)
         assert other == [(str(tmp_path / 'e'), 1, False)]
+
+    def test_override_counts_claude_md_in_area(self, tmp_path):
+        # R-UPD-UNMG-001 with R-UPD-STALE-007: the area's kb.yml lifts the
+        # CLAUDE.md default for its subtree only.
+        _tree(tmp_path, {'advisor/.kb': '', 'advisor/coach/CLAUDE.md': 'x',
+                         'other/CLAUDE.md': 'x', 'other/n.md': 'x'})
+        (tmp_path / 'advisor' / '.kb' / 'kb.yml').write_text(
+            'override_default_source_exclude: [CLAUDE.md]\n')
+        under, other = _scan(tmp_path)
+        assert under == [(str(tmp_path / 'advisor' / 'coach'), 1, False)]
+        assert other == [(str(tmp_path / 'other'), 1, False)]
 
     def test_sorted_by_count_descending(self, tmp_path):
         _tree(tmp_path, {'small/a.md': 'x',
